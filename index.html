@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FBF8F3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Бюджет">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+<title>Бюджет</title>
+</head>
+<body>
+<header class="hdr"><h1 id="title">Бюджет</h1><button class="gear" data-act="settings" aria-label="Настройки">⚙</button></header>
+<div id="banners"></div>
+<div id="loading" class="m pad">Загружаю…</div>
+<main id="view"></main>
+<button id="fab" class="fab" data-act="addOp" aria-label="Добавить операцию">+ Операция</button>
+<nav class="nav" aria-label="Разделы">
+  <button data-v="budget" class="on">Бюджет</button>
+  <button data-v="shop">Покупки</button>
+  <button data-v="wish">Вишлист</button>
+  <button data-v="travel">Путешествия</button>
+</nav>
+<div id="modal" class="modal" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<noscript>Для работы приложения нужен JavaScript.</noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
