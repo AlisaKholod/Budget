@@ -45,7 +45,7 @@ export function fromSheets(all) {
   }
   for (const { r, row } of rows(all['Вишлист'])) {
     if (!r[1]) continue;
-    d.wishes.push({ _row: row, owner: str(r[0]), name: str(r[1]), price: num(r[2]), currency: str(r[3]) || '₪', link: str(r[4]), desc: str(r[5]), when: str(r[6]), saved: num(r[7]), priority: str(r[8]), salePrice: num(r[9]), saleStore: str(r[10]), image: str(r[11]) });
+    d.wishes.push({ _row: row, owner: str(r[0]), name: str(r[1]), price: num(r[2]), currency: str(r[3]) || '₪', link: str(r[4]), desc: str(r[5]), when: str(r[6]), saved: num(r[7]), priority: str(r[8]), salePrice: num(r[9]), saleStore: str(r[10]), image: str(r[11]), bought: dateStr(r[12]) });
   }
   for (const { r } of rows(all['Будущие расходы'])) {
     if (!r[1]) continue;
@@ -71,7 +71,7 @@ export function fromSheets(all) {
 }
 
 const opRow = (o) => [o.id, o.date, o.type, o.country, o.category, o.sub, o.desc, o.amount, o.currency, o.who, o.store, o.pay, o.source, o.receiptId];
-const wishRow = (w) => [w.owner, w.name, w.price, w.currency, w.link, w.desc, w.when, w.saved, w.priority, w.salePrice || '', w.saleStore || '', w.image || ''];
+const wishRow = (w) => [w.owner, w.name, w.price, w.currency, w.link, w.desc, w.when, w.saved, w.priority, w.salePrice || '', w.saleStore || '', w.image || '', w.bought || ''];
 const futureRow = (f) => [f.date, f.name, f.amount, f.currency, f.source, f.note || ''];
 const planRow = (p) => [p.weekStart, p.name, p.plan, p.currency, p.category || 'Продукты', p.sub || '', p.budget || ''];
 const trackedRow = (t) => [t.name, t.store, t.branch, t.threshold, t.last || '', t.onSale ? 'да' : '', t.checked || '', t.image || ''];
@@ -168,6 +168,29 @@ export async function setWishSaved(w, saved) {
   if (!isSheetMode()) return '';
   if (!w._row) return 'Строка вишлиста ещё не получила номер, обнови страницу.';
   return remote({ action: 'update', sheet: 'Вишлист', row: w._row, col: 8, values: [saved] });
+}
+
+export async function setWishBought(w, date) {
+  w.bought = date || '';
+  persist();
+  if (!isSheetMode()) return '';
+  if (!w._row) return 'Строка вишлиста ещё не получила номер, обнови страницу.';
+  return remote({ action: 'update', sheet: 'Вишлист', row: w._row, col: 13, values: [w.bought] });
+}
+
+export async function deleteWish(w) {
+  const i = data.wishes.indexOf(w);
+  if (i < 0) return '';
+  const row = w._row;
+  if (isSheetMode() && !row) return 'Строка вишлиста ещё не получила номер, обнови страницу.';
+  if (isSheetMode()) {
+    const err = await remote({ action: 'deleteRow', sheet: 'Вишлист', row, checkCol: 2, checkValue: w.name });
+    if (err) return err;
+    data.wishes.forEach((x) => { if (x._row > row) x._row -= 1; });
+  }
+  data.wishes.splice(i, 1);
+  persist();
+  return '';
 }
 
 export async function addFuture(f) {

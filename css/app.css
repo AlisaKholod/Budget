@@ -31,7 +31,7 @@ button.p{min-height:44px;border-radius:999px;padding:0 14px;background:var(--car
 button.p.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 button.o,button.primary{min-height:44px;border-radius:12px;padding:0 16px;font-weight:600;font-size:15px}
 button.o{background:var(--card);color:var(--accent);border:1px solid var(--accent)}
-button.o.sm{min-height:44px;padding:0 12px;font-size:14px}
+button.o.sm,button.primary.sm{min-height:44px;padding:0 12px;font-size:14px}
 button.primary{background:var(--accent);color:#fff;border:0}
 @media (prefers-color-scheme:dark){button.primary{color:#042F2B}}
 button:disabled{opacity:.4;cursor:default}

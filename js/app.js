@@ -12,7 +12,7 @@ const WHEN = ['1–3 мес', '3–6 мес', '6–12 мес', 'Позже'];
 
 const ui = {
   tab: 'budget', country: 'IL', monthOff: 0, dtab: 'exp', showAll: false,
-  shopTab: 'weeks', shopOff: 0, openWeek: null, owner: 'Я', onlySale: false, trip: null,
+  shopTab: 'weeks', shopOff: 0, openWeek: null, owner: 'Я', wishView: 'list', onlySale: false, trip: null,
 };
 
 // ---------- Мелкие помощники ----------
@@ -152,7 +152,22 @@ function shopDeals() {
 
 function viewWish() {
   const tabs = OWNERS.map((o) => `<button class="p ${ui.owner === o ? 'on' : ''}" data-act="owner" data-v="${o}">${o}</button>`).join('');
-  const list = S.data.wishes.map((w, i) => ({ w, i })).filter(({ w }) => w.owner === ui.owner && (!ui.onlySale || L.wishDiscountPct(w) > 0));
+  const mine = S.data.wishes.map((w, i) => ({ w, i })).filter(({ w }) => w.owner === ui.owner);
+  const done = mine.filter(({ w }) => w.bought);
+  const views = `<div class="f"><button class="p ${ui.wishView === 'list' ? 'on' : ''}" data-act="wishView" data-v="list">Хотелки</button><button class="p ${ui.wishView === 'done' ? 'on' : ''}" data-act="wishView" data-v="done">🏆 Достижения${done.length ? ' · ' + done.length : ''}</button></div>`;
+  if (ui.wishView === 'done') {
+    const total = {};
+    done.forEach(({ w }) => { total[w.currency] = (total[w.currency] || 0) + (L.wishGoal(w) || L.num(w.price)); });
+    const sum = Object.entries(total).map(([c, v]) => L.fmt(v, c)).join(' + ');
+    const cards = done.map(({ w, i }) => `<section class="c"><div class="f">${img(w.image, w.name)}<div class="grow"><div class="row"><h2>${esc(w.name)}</h2>${badge('Куплено', 'ok')}</div>
+      <div class="m">${esc(w.bought)} · ${L.fmt(L.wishGoal(w) || L.num(w.price), w.currency)}</div>
+      ${w.desc ? `<div class="m">${esc(w.desc)}</div>` : ''}</div></div>
+      <div class="f"><button class="o sm" data-act="wishUnbuy" data-v="${i}">Вернуть в хотелки</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`).join('');
+    return `<div class="f">${tabs}</div>${views}
+      ${done.length ? `<div class="m">Исполнено желаний: <b>${done.length}</b> на сумму <b>${sum}</b></div>` : ''}
+      ${cards || '<div class="m">Пока пусто. Нажми «Куплено» на карточке, когда купите.</div>'}`;
+  }
+  const list = mine.filter(({ w }) => !w.bought && (!ui.onlySale || L.wishDiscountPct(w) > 0));
   const cards = list.map(({ w, i }) => {
     const goal = L.wishGoal(w);
     const pct = L.wishDiscountPct(w);
@@ -164,9 +179,10 @@ function viewWish() {
       ${link ? `<a class="lnk" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Ссылка на магазин ↗</a>` : ''}
       ${w.when ? badge('Купить: ' + w.when) : ''}</div></div>
       ${bar(L.wishProgress(w))}
-      <div class="row"><span class="m">Накоплено ${L.fmt(L.num(w.saved), w.currency)} из ${L.fmt(goal, w.currency)}</span><button class="o sm" data-act="wishPlus" data-v="${i}">+100 ${esc(w.currency)}</button></div></section>`;
+      <div class="row"><span class="m">Накоплено ${L.fmt(L.num(w.saved), w.currency)} из ${L.fmt(goal, w.currency)}</span><button class="o sm" data-act="wishPlus" data-v="${i}">+100 ${esc(w.currency)}</button></div>
+      <div class="f"><button class="primary sm" data-act="wishBuy" data-v="${i}">✓ Куплено</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`;
   }).join('');
-  return `<div class="f">${tabs}</div>
+  return `<div class="f">${tabs}</div>${views}
   <div class="f"><button class="primary grow" data-act="addWish">+ Добавить хотелку</button><button class="p ${ui.onlySale ? 'on' : ''}" data-act="onlySale">Только со скидкой</button></div>
   ${cards || '<div class="m">Здесь пока пусто.</div>'}`;
 }
@@ -490,6 +506,30 @@ const ACTIONS = {
   owner: (v) => { ui.owner = v; render(); },
   onlySale: () => { ui.onlySale = !ui.onlySale; render(); },
   addWish: () => formWish(),
+  wishView: (v) => { ui.wishView = v; render(); },
+  wishBuy: async (v) => {
+    const w = S.data.wishes[+v];
+    if (!w) return;
+    const err = await S.setWishBought(w, isoToday());
+    toast(err || `«${w.name}» куплено! Смотри во вкладке «Достижения»`);
+    render();
+  },
+  wishUnbuy: async (v) => {
+    const w = S.data.wishes[+v];
+    if (!w) return;
+    const err = await S.setWishBought(w, '');
+    if (err) toast(err);
+    render();
+  },
+  wishDel: (v) => {
+    const w = S.data.wishes[+v];
+    if (!w) return;
+    openForm({
+      title: `Удалить «${w.name}»?`, fields: [], submit: 'Удалить',
+      hint: 'Хотелка будет удалена из списка и из таблицы. Это нельзя отменить.',
+      onSubmit: () => S.deleteWish(w),
+    });
+  },
   wishPlus: async (v) => {
     const w = S.data.wishes[+v];
     if (!w) return;

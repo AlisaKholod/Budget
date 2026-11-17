@@ -74,6 +74,14 @@ function doPost(e) {
       body.rows.forEach(function (row) { sh.appendRow(row); });
       return out_({ ok: true });
     }
+    if (body.action === 'deleteRow') {
+      // Удаляем строку body.row, только если в столбце checkCol стоит checkValue (защита от сдвига строк).
+      if (!(body.row >= 2)) return out_({ ok: false, error: 'Нельзя удалить заголовок' });
+      var cur = sh.getRange(body.row, body.checkCol).getValue();
+      if (String(cur) !== String(body.checkValue)) return out_({ ok: false, error: 'Строка изменилась, обнови страницу' });
+      sh.deleteRow(body.row);
+      return out_({ ok: true });
+    }
     return out_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return out_({ ok: false, error: String(err) });
