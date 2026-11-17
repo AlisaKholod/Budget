@@ -12,7 +12,7 @@ const WHEN = ['1–3 мес', '3–6 мес', '6–12 мес', 'Позже'];
 
 const ui = {
   tab: 'budget', country: 'IL', monthOff: 0, dtab: 'exp', showAll: false,
-  shopTab: 'weeks', openWeek: null, owner: 'Я', onlySale: false, trip: null,
+  shopTab: 'weeks', shopOff: 0, openWeek: null, owner: 'Я', onlySale: false, trip: null,
 };
 
 // ---------- Мелкие помощники ----------
@@ -111,7 +111,8 @@ function weekPlan(w) {
 }
 
 function shopWeeks() {
-  const weeks = L.weeksOfMonth(today.getFullYear(), today.getMonth());
+  const sm = new Date(today.getFullYear(), today.getMonth() + ui.shopOff, 1);
+  const weeks = L.weeksOfMonth(sm.getFullYear(), sm.getMonth());
   const cards = weeks.map((w) => {
     const wp = weekPlan(w);
     const pf = L.planFact(wp.items.map((i) => ({ name: i.name, plan: i.plan })), S.data.ops, w, 'IL');
@@ -130,7 +131,8 @@ function shopWeeks() {
       <div class="row"><span class="m">${hasFact ? 'Факт ' + L.fmt(pf.factTotal, '₪') + (wp.budget > 0 ? ' из бюджета ' + L.fmt(wp.budget, '₪') : '') : wp.budget > 0 ? 'Бюджет ' + L.fmt(wp.budget, '₪') : 'Бюджет не задан'}</span>${diffBadge}</div>
       ${table}</section>`;
   }).join('');
-  return `<div class="m">${L.monthTitle(nowIdx, true)}. Факт берётся из трат «Продукты» по Израилю за неделю (недели с воскресенья по субботу).</div>${cards}`;
+  const nav = `<div class="row"><button class="o sm" data-act="shopMonth" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${L.monthTitle(L.monthIndex(sm))}</b><button class="o sm" data-act="shopMonth" data-v="1" aria-label="Следующий месяц">›</button></div>`;
+  return `${nav}<div class="m">Факт берётся из трат «Продукты» по Израилю за неделю (недели с воскресенья по субботу).</div>${cards}`;
 }
 
 function shopDeals() {
@@ -235,7 +237,7 @@ function render() {
     ? `<div class="banner bad">Нет связи с таблицей, показаны последние сохранённые данные. ${esc(S.status.error)}</div>`
     : S.status.mode === 'demo' ? '<div class="banner">Демо-данные. Они хранятся только на этом устройстве. Таблицу можно подключить в настройках (⚙).</div>' : '';
   $('#banners').innerHTML = banner;
-  $('#fab').hidden = ui.tab !== 'budget';
+  $('#fab').hidden = !['budget', 'shop'].includes(ui.tab);
   window.scrollTo(0, scroll);
 }
 
@@ -306,12 +308,25 @@ function formOp() {
       form.type.addEventListener('change', fill);
       form.currency.addEventListener('change', fill);
       form.category.addEventListener('change', fill);
-      fill();
+      if (ui.tab === 'shop' && form.type.value === 'Расход') {
+        form.currency.value = '₪';
+        fill();
+        if ([...form.category.options].some((o) => o.value === 'Продукты')) { form.category.value = 'Продукты'; fill(); }
+      } else fill();
     },
     onSubmit: (v) => {
       const amount = L.num(v.amount);
       if (!(amount > 0)) return 'Сумма должна быть больше нуля.';
-      return S.addOp({ date: v.date, type: v.type, country: L.COUNTRY_BY_CUR[v.currency], category: v.category, sub: v.sub || '', desc: v.desc || v.category, amount, currency: v.currency });
+      const d = L.parseDate(v.date);
+      const res = S.addOp({ date: v.date, type: v.type, country: L.COUNTRY_BY_CUR[v.currency], category: v.category, sub: v.sub || '', desc: v.desc || v.category, amount, currency: v.currency });
+      return Promise.resolve(res).then((r) => {
+        if (d && v.type === 'Расход' && v.category === 'Продукты' && v.currency === '₪') {
+          ui.shopOff = (d.getFullYear() - today.getFullYear()) * 12 + d.getMonth() - today.getMonth();
+          const w = L.weeksOfMonth(d.getFullYear(), d.getMonth()).find((x) => d >= x.start && L.iso(d) <= L.iso(x.end));
+          if (w) { ui.openWeek = w.n; toast(`Записано в неделю ${w.n} (${L.ddmm(w.start)} – ${L.ddmm(w.end)})`); }
+        }
+        return typeof r === 'string' ? r : undefined;
+      });
     },
   });
 }
@@ -467,6 +482,7 @@ const ACTIONS = {
   addOp: () => formOp(),
   addFuture: () => formFuture(),
   shopTab: (v) => { ui.shopTab = v; render(); },
+  shopMonth: (v) => { ui.shopOff += +v; ui.openWeek = null; render(); },
   openWeek: (v) => { ui.openWeek = ui.openWeek === +v ? 0 : +v; render(); },
   addPlan: (v) => formWeekItem(weekByN(v)),
   setBudget: (v) => formBudget(weekByN(v)),
