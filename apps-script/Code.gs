@@ -5,9 +5,18 @@
  * Ключ доступа хранится в «Свойствах скрипта» (KEY), а не в коде.
  */
 
-// Листы, которые приложение может читать и менять.
-var SHEETS = ['Операции', 'Категории', 'Люди', 'Правила', 'План недели', 'Будущие расходы', 'Вишлист', 'Скидки', 'Поездки', 'Места', 'Мелкие покупки', 'Жильё'];
-var WRITABLE = ['Операции', 'Вишлист', 'Будущие расходы', 'План недели', 'Скидки', 'Поездки', 'Места', 'Мелкие покупки', 'Жильё'];
+// Версия скрипта. Приложение сравнивает её со своей и подсказывает, если скрипт нужно обновить.
+// Новые листы и поля приложения подхватываются сами: скрипт работает с любыми листами таблицы.
+var VERSION = 3;
+
+// Листы, которые приложение не должно менять (их ты правишь в таблице руками или они считаются формулами).
+var READ_ONLY = ['Категории', 'Люди', 'Правила'];
+// Листы, которые приложению вообще не отдаём. Лист с названием, начинающимся с «_», тоже скрыт.
+var HIDDEN = ['Сводка'];
+
+function isHidden_(name) {
+  return HIDDEN.indexOf(name) >= 0 || name.charAt(0) === '_';
+}
 
 function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
@@ -32,13 +41,13 @@ function doGet(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = ss.getSpreadsheetTimeZone();
     var data = {};
-    SHEETS.forEach(function (name) {
-      var sh = ss.getSheetByName(name);
-      if (!sh) return;
+    ss.getSheets().forEach(function (sh) {
+      var name = sh.getName();
+      if (isHidden_(name)) return;
       var vals = sh.getDataRange().getValues();
       data[name] = vals.map(function (row) { return row.map(function (v) { return plain_(v, tz); }); });
     });
-    return out_({ ok: true, data: data });
+    return out_({ ok: true, version: VERSION, data: data });
   } catch (err) {
     return out_({ ok: false, error: String(err) });
   }
@@ -51,10 +60,11 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     if (!authorized_(body.key)) return out_({ ok: false, error: 'Неверный ключ' });
     // Поиск цены не трогает таблицу, поэтому делаем его без блокировки.
-    if (body.action === 'price') return out_(lookupPrice_(body.url, body.mode));
+    if (body.action === 'price') { var pr = lookupPrice_(body.url, body.mode); pr.version = VERSION; return out_(pr); }
+    if (body.action === 'ping') return out_({ ok: true, version: VERSION });
     lock.waitLock(20000);
     locked = true;
-    if (WRITABLE.indexOf(body.sheet) < 0) return out_({ ok: false, error: 'Этот лист менять нельзя' });
+    if (isHidden_(String(body.sheet)) || READ_ONLY.indexOf(body.sheet) >= 0) return out_({ ok: false, error: 'Этот лист менять нельзя' });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sh = ss.getSheetByName(body.sheet);
     if (!sh) return out_({ ok: false, error: 'Нет листа ' + body.sheet });

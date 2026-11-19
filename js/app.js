@@ -313,7 +313,7 @@ function render() {
   document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === ui.tab));
   const banner = S.status.offline
     ? `<div class="banner bad">Нет связи с таблицей, показаны последние сохранённые данные. ${esc(S.status.error)}</div>`
-    : S.status.missing.length ? `<div class="banner bad">Скрипт в таблице устарел: он не отдаёт листы «${esc(S.status.missing.join('», «'))}», и новые записи там не сохраняются. Вставь свежий Code.gs и создай новую версию развёртывания (apps-script/README.md).</div>`
+    : S.status.mode === 'sheet' && (S.status.missing.length || S.status.scriptVersion < S.REQUIRED_SCRIPT_VERSION) ? `<div class="banner bad">Скрипт в таблице устарел${S.status.missing.length ? ': он не отдаёт листы «' + esc(S.status.missing.join('», «')) + '»' : ''}, часть данных может не сохраняться. Вставь свежий Code.gs и создай новую версию развёртывания (apps-script/README.md).</div>`
     : S.status.mode === 'demo' ? '<div class="banner">Демо-данные. Они хранятся только на этом устройстве. Таблицу можно подключить в настройках (⚙).</div>' : '';
   $('#banners').innerHTML = banner;
   $('#fab').hidden = !['budget', 'shop'].includes(ui.tab);

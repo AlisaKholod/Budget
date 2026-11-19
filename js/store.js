@@ -14,7 +14,8 @@ const write = (k, v) => {
 };
 
 export const settings = Object.assign({ url: '', key: '', who: 'Я' }, read(LS.settings, {}));
-export const status = { mode: 'demo', offline: false, error: '', missing: [] };
+export const REQUIRED_SCRIPT_VERSION = 3;
+export const status = { mode: 'demo', offline: false, error: '', missing: [], scriptVersion: 0 };
 export let data = emptyData();
 
 export function emptyData() {
@@ -104,6 +105,7 @@ async function fetchAll() {
   const res = await fetch(settings.url + (settings.url.includes('?') ? '&' : '?') + 'action=all&key=' + encodeURIComponent(settings.key));
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'Ошибка таблицы');
+  status.scriptVersion = Number(json.version) || 0;
   return json.data;
 }
 
