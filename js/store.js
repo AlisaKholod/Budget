@@ -14,7 +14,7 @@ const write = (k, v) => {
 };
 
 export const settings = Object.assign({ url: '', key: '', who: 'Я' }, read(LS.settings, {}));
-export const status = { mode: 'demo', offline: false, error: '' };
+export const status = { mode: 'demo', offline: false, error: '', missing: [] };
 export let data = emptyData();
 
 export function emptyData() {
@@ -107,12 +107,24 @@ async function fetchAll() {
   return json.data;
 }
 
+/** Читает таблицу. Если скрипт старый и не отдаёт какой-то лист, не затираем то, что уже есть на устройстве. */
+async function loadAll() {
+  const all = await fetchAll();
+  const d = fromSheets(all);
+  const cache = read(LS.cache, {});
+  status.missing = [];
+  for (const [key, sheet] of [['lodging', 'Жильё'], ['smalls', 'Мелкие покупки'], ['trips', 'Поездки'], ['places', 'Места']]) {
+    if (!all[sheet]) { d[key] = (data[key] && data[key].length ? data[key] : cache[key]) || []; status.missing.push(sheet); }
+  }
+  return d;
+}
+
 /** Первая загрузка. В режиме таблицы при ошибке берём последние сохранённые данные. */
 export async function init() {
   if (isSheetMode()) {
     status.mode = 'sheet';
     try {
-      data = fromSheets(await fetchAll());
+      data = await loadAll();
       write(LS.cache, data);
       status.offline = false;
       status.error = '';
@@ -139,7 +151,7 @@ async function addRemote(body) {
   const err = await remote(body);
   if (err || !isSheetMode()) return err;
   try {
-    data = fromSheets(await fetchAll());
+    data = await loadAll();
     persist();
   } catch (e) { /* данные уже записаны; номер строки подтянется при следующей загрузке */ }
   return '';
