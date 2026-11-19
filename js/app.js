@@ -313,7 +313,7 @@ function render() {
   document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === ui.tab));
   const banner = S.status.offline
     ? `<div class="banner bad">Нет связи с таблицей, показаны последние сохранённые данные. ${esc(S.status.error)}</div>`
-    : S.status.mode === 'sheet' && (S.status.missing.length || S.status.scriptVersion < S.REQUIRED_SCRIPT_VERSION) ? `<div class="banner bad">Скрипт в таблице устарел${S.status.missing.length ? ': он не отдаёт листы «' + esc(S.status.missing.join('», «')) + '»' : ''}, часть данных может не сохраняться. Вставь свежий Code.gs и создай новую версию развёртывания (apps-script/README.md).</div>`
+    : S.status.mode === 'sheet' && S.status.checked && (S.status.missing.length || S.status.scriptVersion < S.REQUIRED_SCRIPT_VERSION) ? `<div class="banner bad">Скрипт в таблице устарел${S.status.missing.length ? ': он не отдаёт листы «' + esc(S.status.missing.join('», «')) + '»' : ''}, часть данных может не сохраняться. Вставь свежий Code.gs и создай новую версию развёртывания (apps-script/README.md).</div>`
     : S.status.mode === 'demo' ? '<div class="banner">Демо-данные. Они хранятся только на этом устройстве. Таблицу можно подключить в настройках (⚙).</div>' : '';
   $('#banners').innerHTML = banner;
   $('#fab').hidden = !['budget', 'shop'].includes(ui.tab);
@@ -754,6 +754,22 @@ function formSettings() {
       return '';
     },
     onOpen(form) {
+      if (S.isSheetMode()) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'o';
+        b.textContent = '🔗 Ссылка для другого устройства';
+        const note = document.createElement('div');
+        note.className = 'm';
+        note.textContent = 'Ссылка содержит доступ к таблице. Отправь её только мужу, в личном сообщении, и никому больше.';
+        b.addEventListener('click', async () => {
+          const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ url: S.settings.url, key: S.settings.key, who: S.settings.who === 'Я' ? 'Муж' : 'Я' }))));
+          const link = location.origin + location.pathname + '#setup=' + payload;
+          try { await navigator.clipboard.writeText(link); toast('Ссылка скопирована. Отправь её мужу.'); } catch (e) { window.prompt('Скопируй ссылку:', link); }
+        });
+        form.appendChild(b);
+        form.appendChild(note);
+      }
       if (!S.isSheetMode()) {
         const b = document.createElement('button');
         b.type = 'button';
@@ -911,10 +927,33 @@ document.addEventListener('keydown', (e) => {
 
 document.querySelectorAll('.nav button').forEach((b) => { b.dataset.act = 'nav'; });
 
+// Подключение устройства по ссылке «#setup=…» (из настроек другого устройства).
+function setupFromLink() {
+  const m = location.hash.match(/^#setup=(.+)$/);
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname + location.search); // ключ не оставляем в адресной строке
+  let cfg;
+  try { cfg = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { return false; }
+  if (!cfg || !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cfg.url || '') || !cfg.key) return false;
+  openForm({
+    title: 'Подключить это устройство?',
+    hint: `Приложение будет работать с общей таблицей (скрипт …${cfg.url.slice(-14, -5)}). Подключай только по ссылке, которую прислал тебе близкий человек.`,
+    fields: [],
+    submit: 'Подключить',
+    onSubmit: () => {
+      S.saveSettings({ url: cfg.url, key: String(cfg.key), who: cfg.who === 'Муж' ? 'Муж' : 'Я' });
+      location.reload();
+      return '';
+    },
+  });
+  return true;
+}
+
 (async function start() {
   const cw = L.weeksOfMonth(today.getFullYear(), today.getMonth()).find((w) => today >= w.start && today <= w.end);
   ui.openWeek = cw ? cw.n : null;
   render();
+  setupFromLink();
   await S.init();
   $('#loading').hidden = true;
   render();

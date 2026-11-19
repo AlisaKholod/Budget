@@ -15,7 +15,7 @@ const write = (k, v) => {
 
 export const settings = Object.assign({ url: '', key: '', who: 'Я' }, read(LS.settings, {}));
 export const REQUIRED_SCRIPT_VERSION = 3;
-export const status = { mode: 'demo', offline: false, error: '', missing: [], scriptVersion: 0 };
+export const status = { mode: 'demo', offline: false, error: '', missing: [], scriptVersion: 0, checked: false };
 export let data = emptyData();
 
 export function emptyData() {
@@ -125,8 +125,10 @@ async function loadAll() {
 export async function init() {
   if (isSheetMode()) {
     status.mode = 'sheet';
+    status.checked = false;
     try {
       data = await loadAll();
+      status.checked = true;
       write(LS.cache, data);
       status.offline = false;
       status.error = '';
