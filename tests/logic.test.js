@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fmt, signed, totals, byCategory, weeksOfMonth, monthIndex, parseDate, futureItems, futureGroups,
-  futureTiles, reserve, planFact, wishGoal, wishProgress, wishDiscountPct, tripDates, nightsWord,
+  futureTiles, reserve, planFact, wishGoal, wishProgress, wishDiscountPct, wishSite, tripDates, nightsWord,
   parseRoute, monthlySeries, iso,
 } from '../js/logic.js';
 
@@ -87,10 +87,14 @@ test('planFact: совпадение по названию и «вне спис�
 });
 
 test('вишлист: цель со скидкой, прогресс и процент', () => {
-  const w = { price: 2000, salePrice: 1700, saved: 850 };
-  assert.equal(wishGoal(w), 1700);
+  const w = { price: 2000, salePrice: 1700, saved: 1000 };
+  assert.equal(wishGoal(w), 2000); // копим на свою цену, а не на цену сайта
   assert.equal(wishProgress(w), 50);
   assert.equal(wishDiscountPct(w), 15);
+  assert.deepEqual(wishSite(w), { site: 1700, gain: 300, pct: 15 });
+  assert.equal(wishSite({ price: 11000, salePrice: 8600 }).gain, 2400);
+  assert.equal(wishSite({ price: 100, salePrice: 120 }).gain, -20);
+  assert.equal(wishSite({ price: 100, salePrice: 0 }), null);
   assert.equal(wishGoal({ price: 400, salePrice: 0 }), 400);
   assert.equal(wishProgress({ price: 0, saved: 10 }), 0);
 });

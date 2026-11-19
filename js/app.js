@@ -167,14 +167,14 @@ function viewWish() {
       ${done.length ? `<div class="m">Исполнено желаний: <b>${done.length}</b> на сумму <b>${sum}</b></div>` : ''}
       ${cards || '<div class="m">Пока пусто. Нажми «Куплено» на карточке, когда купите.</div>'}`;
   }
-  const list = mine.filter(({ w }) => !w.bought && (!ui.onlySale || L.wishDiscountPct(w) > 0));
+  const list = mine.filter(({ w }) => !w.bought && (!ui.onlySale || (L.wishSite(w) && L.wishSite(w).gain > 0)));
   const cards = list.map(({ w, i }) => {
     const goal = L.wishGoal(w);
-    const pct = L.wishDiscountPct(w);
+    const ws = L.wishSite(w);
     const link = safeUrl(w.link);
     return `<section class="c"><div class="f">${img(w.image, w.name)}<div class="grow"><div class="row"><h2>${esc(w.name)}</h2>${badge(w.priority || 'Средний')}</div>
-      <div class="m">Цена ${L.fmt(L.num(w.price), w.currency)}</div>
-      ${pct ? badge(`Скидка ${pct}% · ${w.saleStore || 'магазин'} · ${L.fmt(L.num(w.salePrice), w.currency)}`, 'ok') : badge('Скидок нет')}
+      <div class="m">Моя цена ${L.fmt(L.num(w.price), w.currency)}</div>
+      ${ws ? `<div class="m">${esc(w.saleStore || 'Цена на сайте')}: <b>${L.fmt(ws.site, w.currency)}</b></div>${ws.gain > 0 ? badge(`Выгода ${L.fmt(ws.gain, w.currency)} (${ws.pct}%)`, 'ok') : ws.gain < 0 ? badge(`Дороже на ${L.fmt(-ws.gain, w.currency)}`, 'bad') : badge('Как у тебя в плане')}` : badge('Цена на сайте не указана')}
       ${w.desc ? `<div class="m">${esc(w.desc)}</div>` : ''}
       ${link ? `<a class="lnk" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Ссылка на магазин ↗</a>` : ''}
       ${w.when ? badge('Купить: ' + w.when) : ''}</div></div>
@@ -183,7 +183,7 @@ function viewWish() {
       <div class="f"><button class="primary sm" data-act="wishBuy" data-v="${i}">✓ Куплено</button><button class="o sm" data-act="wishEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`;
   }).join('');
   return `<div class="f">${tabs}</div>${views}
-  <div class="f"><button class="primary grow" data-act="addWish">+ Добавить хотелку</button><button class="p ${ui.onlySale ? 'on' : ''}" data-act="onlySale">Только со скидкой</button></div>
+  <div class="f"><button class="primary grow" data-act="addWish">+ Добавить хотелку</button><button class="p ${ui.onlySale ? 'on' : ''}" data-act="onlySale">Только выгодные</button></div>
   ${cards || '<div class="m">Здесь пока пусто.</div>'}`;
 }
 
@@ -458,10 +458,10 @@ function formWish(w) {
     submit: edit ? 'Сохранить изменения' : 'Сохранить',
     fields: [
       { name: 'name', label: 'Название', required: true, value: cur.name },
-      { name: 'price', label: 'Примерная цена', type: 'number', value: cur.price || '' },
+      { name: 'price', label: 'Моя цена (на сколько копим)', type: 'number', value: cur.price || '' },
       { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽'], value: cur.currency || '₪' },
-      { name: 'salePrice', label: 'Цена со скидкой (если есть)', type: 'number', value: cur.salePrice || '' },
-      { name: 'saleStore', label: 'Где скидка', value: cur.saleStore || '' },
+      { name: 'salePrice', label: 'Цена на сайте (если знаешь)', type: 'number', value: cur.salePrice || '' },
+      { name: 'saleStore', label: 'Магазин (где эта цена)', value: cur.saleStore || '' },
       { name: 'link', label: 'Ссылка на магазин', value: cur.link || '' },
       { name: 'image', label: 'Фото (необязательно)', type: 'photo', value: cur.image || '' },
       { name: 'desc', label: 'Описание', value: cur.desc || '' },

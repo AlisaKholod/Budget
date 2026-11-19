@@ -187,14 +187,23 @@ export function planFact(planItems, ops, week, country = 'IL') {
 // ---------- Вишлист ----------
 
 export function wishGoal(w) {
+  // Цель накопления — цена, которую человек назвал сам; цена на сайте её не меняет.
   const price = num(w.price);
-  const sale = num(w.salePrice);
-  return sale > 0 && sale < price ? sale : price;
+  return price > 0 ? price : num(w.salePrice);
 }
 
 export function wishProgress(w) {
   const goal = wishGoal(w);
   return goal > 0 ? Math.min(100, Math.round((num(w.saved) / goal) * 100)) : 0;
+}
+
+// Сравнение цены на сайте с «моей» ценой: gain > 0 — на сайте дешевле, gain < 0 — дороже.
+export function wishSite(w) {
+  const price = num(w.price);
+  const site = num(w.salePrice);
+  if (!(site > 0)) return null;
+  const gain = round2(price - site);
+  return { site, gain, pct: price > 0 ? Math.round((Math.abs(gain) / price) * 100) : 0 };
 }
 
 export function wishDiscountPct(w) {
