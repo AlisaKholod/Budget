@@ -110,9 +110,28 @@ function weekPlan(w) {
   return { key, budget, items: rows.filter((r) => r.name !== '(бюджет)') };
 }
 
+const isDesktop = () => window.matchMedia('(min-width:900px)').matches;
+
+// Содержимое недели: список по плану и факту, траты вне списка, кнопки.
+function weekBody(w, wp, pf) {
+  const cls = (r) => (r.diff == null ? '' : r.diff > 0 ? 'bad-t' : r.diff < 0 ? 'ok-t' : '');
+  const rows = pf.rows.map((r) => `<div class="it"><span class="nm">${esc(r.name)}</span><span class="pf"><span class="m">план</span> ${L.fmt(r.plan)} <span class="m">факт</span> <b class="${cls(r)}">${r.fact == null ? '—' : L.fmt(r.fact)}</b></span></div>`).join('');
+  const extras = pf.extras.map((x) => `<div class="it"><span class="nm">${esc(x.name)}${x.sub ? `<span class="m sub">${esc(x.sub)}</span>` : ''}</span><span class="pf"><span class="m">факт</span> <b>${L.fmt(x.fact)}</b></span></div>`).join('');
+  return `
+    <div class="m top">По списку</div>
+    ${rows ? `<div class="items">${rows}</div>` : '<div class="m">Список недели пуст.</div>'}
+    ${extras ? `<div class="m top">Вне списка</div><div class="items">${extras}</div>` : ''}
+    <div class="row top"><span class="m">План по списку</span><b>${L.fmt(pf.planTotal, '₪')}</b></div>
+    <div class="f"><button class="o" data-act="addPlan" data-v="${w.n}">+ Позиция</button><button class="o" data-act="setBudget" data-v="${w.n}">Бюджет недели</button></div>`;
+}
+
 function shopWeeks() {
   const sm = new Date(today.getFullYear(), today.getMonth() + ui.shopOff, 1);
   const weeks = L.weeksOfMonth(sm.getFullYear(), sm.getMonth());
+  const curWeek = weeks.find((w) => today >= w.start && today <= w.end);
+  // на компьютере всегда показана какая-то неделя справа
+  const sel = weeks.some((w) => w.n === ui.openWeek) ? ui.openWeek : (curWeek || weeks[0]).n;
+  let panel = '';
   const cards = weeks.map((w) => {
     const wp = weekPlan(w);
     const pf = L.planFact(wp.items.map((i) => ({ name: i.name, plan: i.plan })), S.data.ops, w, 'IL');
@@ -120,19 +139,17 @@ function shopWeeks() {
     const over = wp.budget > 0 && pf.factTotal > wp.budget;
     const open = ui.openWeek === w.n;
     const diffBadge = !hasFact ? badge('чеков ещё нет') : wp.budget > 0 ? (over ? badge('Перерасход ' + L.fmt(pf.factTotal - wp.budget, '₪'), 'bad') : badge('Осталось ' + L.fmt(wp.budget - pf.factTotal, '₪'), 'ok')) : badge('Бюджет не задан');
-    const table = open ? `
-      <div class="g h"><span>По списку</span><span>План</span><span>Факт</span></div>
-      ${pf.rows.length ? pf.rows.map((r) => `<div class="g"><span>${esc(r.name)}</span><span>${L.fmt(r.plan)}</span><span class="${r.diff == null ? '' : r.diff > 0 ? 'bad-t' : r.diff < 0 ? 'ok-t' : ''}">${r.fact == null ? '—' : L.fmt(r.fact)}</span></div>`).join('') : '<div class="m">Список недели пуст.</div>'}
-      ${pf.extras.length ? `<div class="g h top"><span>Вне списка</span><span></span><span>Факт</span></div>${pf.extras.map((x) => `<div class="g"><span>${esc(x.name)}${x.sub ? `<span class="m sub">${esc(x.sub)}</span>` : ''}</span><span></span><span>${L.fmt(x.fact)}</span></div>`).join('')}` : ''}
-      <div class="row top"><span class="m">План по списку</span><b>${L.fmt(pf.planTotal, '₪')}</b></div>
-      <div class="f"><button class="o" data-act="addPlan" data-v="${w.n}">+ Позиция</button><button class="o" data-act="setBudget" data-v="${w.n}">Бюджет недели</button></div>` : '';
-    return `<section class="c"><button class="hd" data-act="openWeek" data-v="${w.n}" aria-expanded="${open}"><span>Неделя ${w.n}<span class="m sub">${L.ddmm(w.start)} – ${L.ddmm(w.end)}</span></span><span>${open ? '▾' : '▸'}</span></button>
-      ${bar(wp.budget > 0 ? (pf.factTotal / wp.budget) * 100 : 0, over)}
-      <div class="row"><span class="m">${hasFact ? 'Факт ' + L.fmt(pf.factTotal, '₪') + (wp.budget > 0 ? ' из бюджета ' + L.fmt(wp.budget, '₪') : '') : wp.budget > 0 ? 'Бюджет ' + L.fmt(wp.budget, '₪') : 'Бюджет не задан'}</span>${diffBadge}</div>
-      ${table}</section>`;
+    const summary = `${bar(wp.budget > 0 ? (pf.factTotal / wp.budget) * 100 : 0, over)}
+      <div class="row"><span class="m">${hasFact ? 'Факт ' + L.fmt(pf.factTotal, '₪') + (wp.budget > 0 ? ' из бюджета ' + L.fmt(wp.budget, '₪') : '') : wp.budget > 0 ? 'Бюджет ' + L.fmt(wp.budget, '₪') : 'Бюджет не задан'}</span>${diffBadge}</div>`;
+    if (w.n === sel) {
+      panel = `<section class="c wk-panel"><div class="row"><h2>Неделя ${w.n} · ${L.ddmm(w.start)} – ${L.ddmm(w.end)}</h2>${diffBadge}</div>${summary}${weekBody(w, wp, pf)}</section>`;
+    }
+    return `<section class="c wk ${w.n === sel ? 'sel' : ''}"><button class="hd" data-act="openWeek" data-v="${w.n}" aria-expanded="${open}"><span>Неделя ${w.n}<span class="m sub">${L.ddmm(w.start)} – ${L.ddmm(w.end)}</span></span><span class="chev">${open ? '▾' : '▸'}</span></button>
+      ${summary}
+      ${open ? `<div class="wk-inline">${weekBody(w, wp, pf)}</div>` : ''}</section>`;
   }).join('');
   const nav = `<div class="row"><button class="o sm" data-act="shopMonth" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${L.monthTitle(L.monthIndex(sm))}</b><button class="o sm" data-act="shopMonth" data-v="1" aria-label="Следующий месяц">›</button></div>`;
-  return `${nav}<div class="m">Факт берётся из трат «Продукты» по Израилю за неделю (недели с воскресенья по субботу).</div><div class="cards weeks">${cards}</div>`;
+  return `${nav}<div class="m">Факт берётся из трат «Продукты» по Израилю за неделю (недели с воскресенья по субботу).</div><div class="weeks-layout"><div class="weeks-list">${cards}</div>${panel}</div>`;
 }
 
 function shopDeals() {
@@ -798,7 +815,7 @@ const ACTIONS = {
   addFuture: () => formFuture(),
   shopTab: (v) => { ui.shopTab = v; render(); },
   shopMonth: (v) => { ui.shopOff += +v; ui.openWeek = null; render(); },
-  openWeek: (v) => { ui.openWeek = ui.openWeek === +v ? 0 : +v; render(); },
+  openWeek: (v) => { ui.openWeek = isDesktop() || ui.openWeek !== +v ? +v : 0; render(); },
   addPlan: (v) => formWeekItem(weekByN(v)),
   setBudget: (v) => formBudget(weekByN(v)),
   addTracked: () => formTracked(),
