@@ -261,8 +261,21 @@ export function nightsWord(n) {
   return n + ' ' + (m === 1 && h !== 11 ? 'ночь' : m >= 2 && m <= 4 && (h < 10 || h >= 20) ? 'ночи' : 'ночей');
 }
 
-export function tripBudget(t) {
-  return ['flights', 'stay', 'food', 'transport', 'fun'].reduce((s, k) => s + num(t[k]), 0);
+/** Жильё поездки: если есть список вариантов, берём сумму по нему (в валюте поездки), иначе бюджет из поля «Жильё». */
+export function tripStay(t, lodging = []) {
+  const same = lodging.filter((x) => (x.currency || t.currency) === t.currency && num(x.price) > 0);
+  const other = {};
+  lodging.forEach((x) => {
+    const c = x.currency || t.currency;
+    if (c !== t.currency && num(x.price) > 0) other[c] = round2((other[c] || 0) + num(x.price));
+  });
+  const fromList = same.length > 0;
+  return { amount: fromList ? round2(same.reduce((s, x) => s + num(x.price), 0)) : num(t.stay), fromList, other };
+}
+
+export function tripBudget(t, lodging = []) {
+  const stay = tripStay(t, lodging).amount;
+  return round2(['flights', 'food', 'transport', 'fun'].reduce((s, k) => s + num(t[k]), 0) + stay);
 }
 
 /** Места из ссылки Google Maps (длинной), из ссылки api=1 или из списка по строкам. */

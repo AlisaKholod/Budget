@@ -235,7 +235,7 @@ function tripList() {
   return `
   ${fares.length ? `<section class="c hl"><div class="row"><h2>Скидки на авиабилеты</h2>${badge(fares.length + ' направл.', 'ok')}</div><div class="m">${fares.map((t) => esc(t.name) + ' −' + t.fareDrop + '%').join(', ')}</div></section>` : ''}
   <section class="c"><h2>Ближайшие 12 месяцев</h2><div class="mg">${months}</div><div class="m">Цифра в месяце означает номер поездки.</div></section>
-  ${trips.map((t) => `<button class="tw" data-act="trip" data-v="${esc(t.id)}">${img(t.image, t.name, 'tp')}<div class="tb"><b>${esc(t.name)}</b><span class="m">${esc(tripWhen(t) || 'Даты не заданы')}</span><span class="m">Лучшие месяцы</span><b>${esc(t.best || '—')}</b><span class="m">Бюджет ≈ ${L.fmt(L.tripBudget(t), t.currency)}</span>${t.fareDrop > 0 ? badge('Билеты −' + t.fareDrop + '%', 'ok') : ''}</div></button>`).join('') || '<div class="m">Поездок пока нет.</div>'}
+  ${trips.map((t) => `<button class="tw" data-act="trip" data-v="${esc(t.id)}">${img(t.image, t.name, 'tp')}<div class="tb"><b>${esc(t.name)}</b><span class="m">${esc(tripWhen(t) || 'Даты не заданы')}</span><span class="m">Лучшие месяцы</span><b>${esc(t.best || '—')}</b><span class="m">Бюджет ≈ ${L.fmt(L.tripBudget(t, tripLodging(t.id).map((o) => o.x)), t.currency)}</span>${t.fareDrop > 0 ? badge('Билеты −' + t.fareDrop + '%', 'ok') : ''}</div></button>`).join('') || '<div class="m">Поездок пока нет.</div>'}
   <button class="o" data-act="addTrip">+ Новая поездка</button>`;
 }
 
@@ -249,16 +249,18 @@ function routeMap(rows) {
 function tripDetail(t) {
   const places = tripPlaces(t.id);
   const td = L.tripDates(t.start, places);
-  const costs = [['Авиабилеты', t.flights], ['Жильё', t.stay], ['Питание', t.food], ['Транспорт', t.transport], ['Развлечения', t.fun]];
+  const lodgingList = tripLodging(t.id).map((o) => o.x);
+  const stay = L.tripStay(t, lodgingList);
+  const costs = [['Авиабилеты', t.flights], [stay.fromList ? `Жильё (сумма по списку: ${lodgingList.length})` : 'Жильё', stay.amount], ['Питание', t.food], ['Транспорт', t.transport], ['Развлечения', t.fun]];
   const names = places.map((p) => p.name);
   return `
   <button class="o" data-act="tripBack">← Все поездки</button>
-  ${img(t.image, t.name, 'tp hero')}
+  <div class="clk" role="button" tabindex="0" data-act="tripEdit" aria-label="Изменить поездку">${img(t.image, t.name, 'tp hero')}<span class="chip">✎ Изменить</span></div>
   <div><h1>${esc(t.name)}</h1><div class="m">${esc(tripWhen(t) || 'Даты не заданы')}</div><div class="m">Лучшие месяцы: ${esc(t.best || '—')}</div></div>
-  <div class="f"><button class="o sm" data-act="tripEdit">Изменить поездку</button><button class="o sm" data-act="tripDel">Удалить</button></div>
+  <div class="f"><button class="o sm" data-act="tripDel">Удалить поездку</button></div>
   ${t.fareDrop > 0 ? `<section class="c hl"><b>Билеты дешевле обычного на ${t.fareDrop}%</b></section>` : ''}
   ${flightCard(t)}
-  <section class="c"><div class="row"><h2>Детализация цен</h2><b>≈ ${L.fmt(L.tripBudget(t), t.currency)}</b></div>${costs.map(([n, v]) => `<div class="row"><span>${n}</span><span>${L.fmt(L.num(v), t.currency)}</span></div>`).join('')}</section>
+  <section class="c"><div class="row"><h2>Детализация цен</h2><b>≈ ${L.fmt(L.tripBudget(t, lodgingList), t.currency)}</b></div>${costs.map(([n, v]) => `<div class="row"><span>${n}</span><span>${L.fmt(L.num(v), t.currency)}</span></div>`).join('')}${Object.keys(stay.other).length ? `<div class="m">Жильё в другой валюте не вошло в сумму: ${Object.entries(stay.other).map(([c, v]) => L.fmt(v, c)).join(' + ')}.</div>` : ''}</section>
   <section class="c"><div class="row"><h2>Маршрут и даты</h2><span class="m">${places.length ? 'Всего ' + L.nightsWord(td.nights) : ''}</span></div>
     ${places.length ? routeMap(td.rows) : '<div class="m">Мест пока нет.</div>'}
     ${places.length ? `<a class="gm" href="${esc(L.gmapsDirUrl(names))}" target="_blank" rel="noopener noreferrer">Открыть в Google Maps ↗</a>` : ''}
@@ -288,14 +290,14 @@ function lodgingCard(t) {
   const items = list.map(({ x, i }) => {
     const s = L.tripSpan(x.from, x.to);
     const link = safeUrl(x.link);
-    return `<div class="c in"><div class="f">${img(x.image, x.name)}<div class="grow"><b>${esc(x.name)}</b>
+    return `<div class="c in clk" role="button" tabindex="0" data-act="lodgingEdit" data-v="${i}" aria-label="Изменить: ${esc(x.name)}"><div class="f">${img(x.image, x.name)}<div class="grow"><b>${esc(x.name)}</b>
       <div class="m">${x.from ? esc(ruDate(x.from)) : '—'} – ${x.to ? esc(ruDate(x.to)) : '—'}${s ? ' · ' + L.nightsWord(s.nights) : ''}</div>
       <div>${x.price ? L.fmt(x.price, x.currency) : 'Цена не указана'}</div>
       ${link ? `<a class="lnk" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Ссылка ↗</a>` : ''}</div></div>
-      <div class="f"><button class="o sm" data-act="lodgingEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="lodgingDel" data-v="${i}">Удалить</button></div></div>`;
+      <div class="f"><button class="o sm" data-act="lodgingDel" data-v="${i}">Удалить</button></div></div>`;
   }).join('');
   return `<section class="c"><div class="row"><h2>Жильё</h2>${list.length ? `<b>${sum}</b>` : ''}</div>${gap}
-    ${items || '<div class="m">Вариантов жилья пока нет.</div>'}
+    ${items ? '<div class="m">Нажми на карточку, чтобы изменить.</div>' + items : '<div class="m">Вариантов жилья пока нет.</div>'}
     <button class="o" data-act="addLodging">+ Жильё</button></section>`;
 }
 
@@ -636,6 +638,9 @@ function formTrip(t) {
       { name: 'image', label: 'Фото (необязательно)', type: 'photo', value: cur.image || '' },
     ],
     onOpen(form) {
+      const syncEnd = () => { form.end.min = form.start.value || ''; };
+      form.start.addEventListener('change', syncEnd);
+      syncEnd();
       const box = document.createElement('div');
       box.className = 'fld';
       box.innerHTML = '<button type="button" class="o">🔎 Узнать минимальную цену по ссылке</button><div class="m" data-price-msg></div>';
@@ -698,8 +703,19 @@ function formLodging(x) {
       { name: 'link', label: 'Ссылка', type: 'url', value: cur.link || '', placeholder: 'https://...' },
       { name: 'image', label: 'Картинка', type: 'photo', value: cur.image || '' },
     ],
+    onOpen(form) {
+      const nextDay = (s) => { const d = L.parseDate(s); if (!d) return ''; d.setDate(d.getDate() + 1); return L.iso(d); };
+      const sync = (auto) => {
+        const min = nextDay(form.from.value);
+        form.to.min = min;
+        // выезд всегда позже заезда: подставляем следующий день, чтобы календарь открывался рядом с нужной датой
+        if (min && (!form.to.value || form.to.value < min || auto === 'force')) form.to.value = min;
+      };
+      form.from.addEventListener('change', () => sync(form.from.value >= form.to.value ? 'force' : ''));
+      sync('');
+    },
     onSubmit: (v) => {
-      if (v.from && v.to && !L.tripSpan(v.from, v.to)) return 'Выезд раньше заезда.';
+      if (v.from && v.to && !(v.to > v.from)) return 'Выезд должен быть позже заезда.';
       const data = { name: v.name.trim(), from: v.from, to: v.to, price: L.num(v.price), currency: v.currency, link: v.link.trim(), image: v.image.trim() };
       return edit ? S.updateLodging(x, data) : S.addLodging({ tripId: ui.trip, ...data });
     },
@@ -881,11 +897,16 @@ const ACTIONS = {
 };
 
 document.addEventListener('click', (e) => {
+  if (e.target.closest('a')) return; // ссылки внутри карточек работают как ссылки
   const el = e.target.closest('[data-act]');
   if (el && ACTIONS[el.dataset.act]) ACTIONS[el.dataset.act](el.dataset.v, el);
   else if (e.target.id === 'modal') closeModal();
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+  const el = e.target.closest && e.target.closest('[role=button][data-act]');
+  if (el && el === e.target && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); }
+});
 
 document.querySelectorAll('.nav button').forEach((b) => { b.dataset.act = 'nav'; });
 

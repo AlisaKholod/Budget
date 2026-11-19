@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fmt, signed, totals, byCategory, weeksOfMonth, monthIndex, parseDate, futureItems, futureGroups,
-  futureTiles, reserve, planFact, wishGoal, wishProgress, wishDiscountPct, wishSite, tripDates, nightsWord, tripSpan, daysWord, lodgingTotals,
+  futureTiles, reserve, planFact, wishGoal, wishProgress, wishDiscountPct, wishSite, tripDates, nightsWord, tripSpan, daysWord, lodgingTotals, tripStay, tripBudget,
   parseRoute, monthlySeries, iso,
 } from '../js/logic.js';
 
@@ -146,4 +146,14 @@ test('tripSpan и жильё', () => {
     { price: 50, currency: '$' },
   ]);
   assert.deepEqual(t, { byCur: { '₪': 2000.5, '$': 50 }, nights: 9 });
+});
+
+test('бюджет поездки: жильё суммируется по списку', () => {
+  const t = { currency: '₪', flights: 1000, stay: 500, food: 100, transport: 50, fun: 50 };
+  assert.equal(tripBudget(t), 1700); // списка нет: берём поле «Жильё»
+  const list = [{ price: 900, currency: '₪' }, { price: 1100.5, currency: '₪' }, { price: 40, currency: '$' }];
+  const s = tripStay(t, list);
+  assert.deepEqual(s, { amount: 2000.5, fromList: true, other: { $: 40 } });
+  assert.equal(tripBudget(t, list), 3200.5);
+  assert.equal(tripBudget(t, [{ price: 40, currency: '$' }]), 1700); // только чужая валюта: поле остаётся
 });
