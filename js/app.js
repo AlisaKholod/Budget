@@ -763,7 +763,7 @@ function formSettings() {
         note.className = 'm';
         note.textContent = 'Ссылка содержит доступ к таблице. Отправь её только мужу, в личном сообщении, и никому больше.';
         b.addEventListener('click', async () => {
-          const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ url: S.settings.url, key: S.settings.key, who: S.settings.who === 'Я' ? 'Муж' : 'Я' }))));
+          const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ url: S.settings.url, key: S.settings.key, who: S.settings.who === 'Я' ? 'Муж' : 'Я' })))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
           const link = location.origin + location.pathname + '#setup=' + payload;
           try { await navigator.clipboard.writeText(link); toast('Ссылка скопирована. Отправь её мужу.'); } catch (e) { window.prompt('Скопируй ссылку:', link); }
         });
@@ -929,12 +929,18 @@ document.querySelectorAll('.nav button').forEach((b) => { b.dataset.act = 'nav';
 
 // Подключение устройства по ссылке «#setup=…» (из настроек другого устройства).
 function setupFromLink() {
-  const m = location.hash.match(/^#setup=(.+)$/);
+  const m = location.hash.match(/^#setup=([^&\s]+)/);
   if (!m) return false;
   history.replaceState(null, '', location.pathname + location.search); // ключ не оставляем в адресной строке
   let cfg;
-  try { cfg = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { return false; }
-  if (!cfg || !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cfg.url || '') || !cfg.key) return false;
+  try {
+    const b64 = decodeURIComponent(m[1]).replace(/-/g, '+').replace(/_/g, '/');
+    cfg = JSON.parse(decodeURIComponent(escape(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)))));
+  } catch (e) { cfg = null; }
+  if (!cfg || !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cfg.url || '') || !cfg.key) {
+    toast('Ссылка для подключения повреждена или обрезана. Попроси отправить её заново.');
+    return false;
+  }
   openForm({
     title: 'Подключить это устройство?',
     hint: `Приложение будет работать с общей таблицей (скрипт …${cfg.url.slice(-14, -5)}). Подключай только по ссылке, которую прислал тебе близкий человек.`,
