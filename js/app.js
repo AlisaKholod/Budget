@@ -180,7 +180,7 @@ function viewWish() {
       ${w.when ? badge('Купить: ' + w.when) : ''}</div></div>
       ${bar(L.wishProgress(w))}
       <div class="row"><span class="m">Накоплено ${L.fmt(L.num(w.saved), w.currency)} из ${L.fmt(goal, w.currency)}</span><button class="o sm" data-act="wishPlus" data-v="${i}">+100 ${esc(w.currency)}</button></div>
-      <div class="f"><button class="primary sm" data-act="wishBuy" data-v="${i}">✓ Куплено</button><button class="o sm" data-act="wishEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`;
+      <div class="f"><button class="primary sm" data-act="wishBuy" data-v="${i}">✓ Куплено</button><button class="o sm" data-act="wishEdit" data-v="${i}">Изменить</button>${link ? `<button class="o sm" data-act="wishRefresh" data-v="${i}">↻ Цена</button>` : ''}<button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`;
   }).join('');
   return `<div class="f">${tabs}</div>${views}
   <div class="f"><button class="primary grow" data-act="addWish">+ Добавить хотелку</button><button class="p ${ui.onlySale ? 'on' : ''}" data-act="onlySale">Только выгодные</button></div>
@@ -450,6 +450,19 @@ function formTracked() {
   });
 }
 
+const CUR_BY_CODE = { ILS: '₪', NIS: '₪', RUB: '₽' };
+
+// Спрашивает цену на сайте по ссылке и приводит ответ к виду для хотелки.
+async function sitePrice(link, cur) {
+  const r = await S.lookupPrice(link);
+  if (!r.ok) return { ok: false, msg: r.error || 'Не получилось узнать цену.' };
+  const code = CUR_BY_CODE[String(r.currency || '').toUpperCase()];
+  if (r.currency && !code) return { ok: false, msg: `Цена на странице в ${r.currency}, пересчитывать не умею. Впиши вручную.` };
+  if (code && code !== cur) return { ok: false, msg: `Цена на странице ${L.fmt(r.price, code)}, а у хотелки валюта ${cur}. Смени валюту или впиши вручную.` };
+  const note = r.several ? ' (на странице несколько вариантов, взята самая низкая, проверь)' : '';
+  return { ok: true, price: r.price, store: r.host, title: r.title, image: r.image, msg: `Цена на сайте ${r.host}: ${L.fmt(r.price, cur)}${note}` };
+}
+
 function formWish(w) {
   const edit = !!w;
   const cur = w || {};
@@ -468,6 +481,43 @@ function formWish(w) {
       { name: 'when', label: 'Когда планируешь купить', type: 'select', options: WHEN, value: cur.when || WHEN[0] },
       { name: 'priority', label: 'Приоритет', type: 'select', options: ['Высокий', 'Средний', 'Низкий'], value: cur.priority || 'Средний' },
     ],
+    onOpen(form) {
+      const lab = form.link.closest('label');
+      const box = document.createElement('div');
+      box.className = 'fld';
+      box.innerHTML = '<button type="button" class="o">🔎 Узнать цену по ссылке</button><div class="m" data-price-msg></div>';
+      lab.after(box);
+      const msg = box.querySelector('[data-price-msg]');
+      let last = '';
+      let busy = false;
+      const run = async () => {
+        if (busy) return;
+        busy = true;
+        try { await go(); } finally { busy = false; }
+      };
+      const go = async () => {
+        const link = form.link.value.trim();
+        if (!link) { msg.textContent = 'Сначала вставь ссылку.'; return; }
+        last = link;
+        msg.textContent = 'Смотрю цену…';
+        const r = await sitePrice(link, form.currency.value);
+        msg.textContent = r.msg;
+        if (!r.ok) return;
+        form.salePrice.value = r.price;
+        if (!form.saleStore.value) form.saleStore.value = r.store;
+        if (!form.name.value && r.title) form.name.value = r.title.slice(0, 80);
+        if (!form.price.value) form.price.value = r.price;
+        const hid = form.querySelector('input[type=hidden][name=image]');
+        if (hid && !hid.value && /^https?:/i.test(r.image || '')) {
+          hid.value = r.image;
+          const pv = form.querySelector('.pv');
+          pv.hidden = false;
+          pv.querySelector('.pvimg').src = r.image;
+        }
+      };
+      box.querySelector('button').addEventListener('click', run);
+      form.link.addEventListener('change', () => { if (S.isSheetMode() && form.link.value.trim() && form.link.value.trim() !== last && !form.salePrice.value) run(); });
+    },
     onSubmit: (v) => {
       const data = { name: v.name.trim(), price: L.num(v.price), currency: v.currency, salePrice: L.num(v.salePrice), saleStore: (v.saleStore || '').trim(), link: v.link.trim(), desc: v.desc.trim(), when: v.when, priority: v.priority, image: v.image.trim() };
       return edit ? S.updateWish(w, data) : S.addWish({ owner: ui.owner, ...data });
@@ -574,6 +624,16 @@ const ACTIONS = {
   onlySale: () => { ui.onlySale = !ui.onlySale; render(); },
   addWish: () => formWish(),
   wishEdit: (v) => { const w = S.data.wishes[+v]; if (w) formWish(w); },
+  wishRefresh: async (v) => {
+    const w = S.data.wishes[+v];
+    if (!w || !w.link) return;
+    toast('Смотрю цену…');
+    const r = await sitePrice(w.link, w.currency);
+    if (!r.ok) { toast(r.msg); return; }
+    const err = await S.updateWish(w, { salePrice: r.price, saleStore: w.saleStore || r.store });
+    toast(err || r.msg);
+    render();
+  },
   wishView: (v) => { ui.wishView = v; render(); },
   wishBuy: async (v) => {
     const w = S.data.wishes[+v];

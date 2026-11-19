@@ -46,10 +46,14 @@ function doGet(e) {
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
+  var locked = false;
   try {
-    lock.waitLock(20000);
     var body = JSON.parse(e.postData.contents);
     if (!authorized_(body.key)) return out_({ ok: false, error: 'Неверный ключ' });
+    // Поиск цены не трогает таблицу, поэтому делаем его без блокировки.
+    if (body.action === 'price') return out_(lookupPrice_(body.url));
+    lock.waitLock(20000);
+    locked = true;
     if (WRITABLE.indexOf(body.sheet) < 0) return out_({ ok: false, error: 'Этот лист менять нельзя' });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sh = ss.getSheetByName(body.sheet);
@@ -86,7 +90,7 @@ function doPost(e) {
   } catch (err) {
     return out_({ ok: false, error: String(err) });
   } finally {
-    try { lock.releaseLock(); } catch (x) { /* замок не был взят */ }
+    if (locked) { try { lock.releaseLock(); } catch (x) { /* уже снят */ } }
   }
 }
 
@@ -95,4 +99,125 @@ function createKey() {
   var key = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
   PropertiesService.getScriptProperties().setProperty('KEY', key);
   Logger.log('Ключ: ' + key);
+}
+
+// ---------- Цена товара по ссылке ----------
+
+/** "10,000.00" и "10.000,00" и "10 000" -> число. */
+function parseMoney_(s) {
+  if (typeof s === 'number') return s;
+  s = String(s == null ? '' : s).replace(/[^0-9.,]/g, '');
+  if (!s) return 0;
+  var lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',');
+  if (lastDot >= 0 && lastComma >= 0) {
+    if (lastDot > lastComma) s = s.replace(/,/g, '');
+    else s = s.replace(/\./g, '').replace(',', '.');
+  } else if (lastComma >= 0) {
+    // «1,234» — тысячи; «12,5» — десятичная запятая
+    s = /,\d{3}$/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if (lastDot >= 0 && /\.\d{3}$/.test(s) && s.indexOf('.') === lastDot) {
+    s = s.replace('.', '');
+  }
+  var n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+
+function metaContent_(html, names) {
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i].replace(/[:.]/g, '\\$&');
+    var re1 = new RegExp('<meta[^>]+(?:property|name|itemprop)=["\']' + n + '["\'][^>]*content=["\']([^"\']*)["\']', 'i');
+    var re2 = new RegExp('<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name|itemprop)=["\']' + n + '["\']', 'i');
+    var m = html.match(re1) || html.match(re2);
+    if (m && m[1]) return m[1];
+  }
+  return '';
+}
+
+function collectProducts_(node, out) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) { node.forEach(function (x) { collectProducts_(x, out); }); return; }
+  var t = node['@type'];
+  var types = Array.isArray(t) ? t : [t];
+  if (types.indexOf('Product') >= 0 || types.indexOf('ProductGroup') >= 0) out.push(node);
+  if (node['@graph']) collectProducts_(node['@graph'], out);
+  if (node.hasVariant) collectProducts_(node.hasVariant, out);
+}
+
+function offersOf_(p) {
+  var o = p.offers;
+  if (!o) return [];
+  if (!Array.isArray(o)) o = [o];
+  var list = [];
+  o.forEach(function (x) {
+    if (x && x.offers) list = list.concat(offersOf_({ offers: x.offers }));
+    else if (x) list.push(x);
+  });
+  return list;
+}
+
+function offerPrice_(o) {
+  var spec = Array.isArray(o.priceSpecification) ? o.priceSpecification[0] : o.priceSpecification;
+  return parseMoney_(o.price != null ? o.price : (o.lowPrice != null ? o.lowPrice : (spec && spec.price)));
+}
+
+/** Достаёт из HTML страницы название, цену, валюту и картинку. Чистая функция, её можно тестировать. */
+function parseProduct_(html, pageUrl) {
+  var res = { price: 0, currency: '', title: '', image: '', several: false };
+  var variant = (String(pageUrl || '').match(/[?&]variant=(\d+)/) || [])[1];
+  var products = [];
+  var re = /<script[^>]+type=["\']application\/ld\+json["\'][^>]*>([\s\S]*?)<\/script>/gi;
+  var m;
+  while ((m = re.exec(html))) {
+    try { collectProducts_(JSON.parse(m[1].trim()), products); } catch (err) { /* битый блок пропускаем */ }
+  }
+  var offers = [];
+  products.forEach(function (p) {
+    if (!res.title && p.name) res.title = String(p.name);
+    if (!res.image && p.image) res.image = String(Array.isArray(p.image) ? (p.image[0].url || p.image[0]) : (p.image.url || p.image));
+    offers = offers.concat(offersOf_(p));
+  });
+  offers = offers.filter(function (o) { return offerPrice_(o) > 0; });
+  if (offers.length) {
+    var chosen = null;
+    if (variant) chosen = offers.filter(function (o) { return String(o.url || o['@id'] || o.sku || '').indexOf(variant) >= 0; })[0] || null;
+    if (!chosen) {
+      chosen = offers.reduce(function (a, b) { return offerPrice_(b) < offerPrice_(a) ? b : a; });
+      res.several = offers.some(function (o) { return offerPrice_(o) !== offerPrice_(chosen); });
+    }
+    res.price = offerPrice_(chosen);
+    res.currency = String(chosen.priceCurrency || '');
+  }
+  if (!res.price) {
+    res.price = parseMoney_(metaContent_(html, ['product:price:amount', 'og:price:amount', 'price']));
+    res.currency = metaContent_(html, ['product:price:currency', 'og:price:currency', 'priceCurrency']);
+  }
+  if (!res.title) res.title = metaContent_(html, ['og:title']) || ((html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || '').trim();
+  if (!res.image) res.image = metaContent_(html, ['og:image']);
+  return res;
+}
+
+function lookupPrice_(url) {
+  url = String(url || '').trim();
+  if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'Нужна ссылка, начинающаяся с http' };
+  var resp;
+  try {
+    resp = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8,ru;q=0.7'
+      }
+    });
+  } catch (err) {
+    return { ok: false, error: 'Не удалось открыть страницу' };
+  }
+  var code = resp.getResponseCode();
+  if (code >= 400) return { ok: false, error: 'Магазин не пустил (код ' + code + ')' };
+  var html = resp.getContentText().slice(0, 1500000);
+  var p = parseProduct_(html, url);
+  if (!(p.price > 0)) return { ok: false, error: 'На странице не нашлась цена' };
+  p.host = (url.match(/^https?:\/\/(?:www\.)?([^\/?#]+)/i) || [])[1] || '';
+  p.ok = true;
+  return p;
 }

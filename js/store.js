@@ -186,6 +186,16 @@ export async function updateWish(w, patch) {
   return remote({ action: 'update', sheet: 'Вишлист', row: w._row, col: 1, values: wishRow(w) });
 }
 
+// Узнаёт цену товара по ссылке через Apps Script. Возвращает { ok, price, currency, title, image, host, several } или { ok:false, error }.
+export async function lookupPrice(url) {
+  if (!isSheetMode()) return { ok: false, error: 'Подключи таблицу в ⚙: цену по ссылке узнаёт скрипт, в демо-режиме это не работает.' };
+  try {
+    return await call({ action: 'price', url });
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
 export async function deleteWish(w) {
   const i = data.wishes.indexOf(w);
   if (i < 0) return '';
