@@ -18,7 +18,7 @@ export const status = { mode: 'demo', offline: false, error: '' };
 export let data = emptyData();
 
 export function emptyData() {
-  return { ops: [], cats: [], wishes: [], future: [], planWeeks: [], tracked: [], trips: [], places: [] };
+  return { ops: [], cats: [], wishes: [], future: [], planWeeks: [], tracked: [], trips: [], places: [], smalls: [] };
 }
 
 export function saveSettings(patch) {
@@ -63,6 +63,10 @@ export function fromSheets(all) {
     if (!r[0]) continue;
     d.trips.push({ id: str(r[0]), name: str(r[1]), best: str(r[2]), start: dateStr(r[3]), flights: num(r[4]), stay: num(r[5]), food: num(r[6]), transport: num(r[7]), fun: num(r[8]), currency: str(r[9]) || '₪', fareDrop: num(r[10]), image: str(r[11]) });
   }
+  for (const { r, row } of rows(all['Мелкие покупки'])) {
+    if (!r[0]) continue;
+    d.smalls.push({ _row: row, name: str(r[0]), desc: str(r[1]), image: str(r[2]), who: str(r[3]), date: dateStr(r[4]) });
+  }
   for (const { r } of rows(all['Места'])) {
     if (!r[0]) continue;
     d.places.push({ tripId: str(r[0]), n: num(r[1]), name: str(r[2]), nights: num(r[3]) || 1 });
@@ -75,6 +79,7 @@ const wishRow = (w) => [w.owner, w.name, w.price, w.currency, w.link, w.desc, w.
 const futureRow = (f) => [f.date, f.name, f.amount, f.currency, f.source, f.note || ''];
 const planRow = (p) => [p.weekStart, p.name, p.plan, p.currency, p.category || 'Продукты', p.sub || '', p.budget || ''];
 const trackedRow = (t) => [t.name, t.store, t.branch, t.threshold, t.last || '', t.onSale ? 'да' : '', t.checked || '', t.image || ''];
+const smallRow = (x) => [x.name, x.desc || '', x.image || '', x.who || '', x.date || ''];
 const tripRow = (t) => [t.id, t.name, t.best, t.start, t.flights, t.stay, t.food, t.transport, t.fun, t.currency, t.fareDrop || '', t.image || ''];
 
 // ---------- Связь с Apps Script ----------
@@ -113,7 +118,7 @@ export async function init() {
     }
   } else {
     status.mode = 'demo';
-    data = read(LS.demo, null) || seed(new Date());
+    data = Object.assign(emptyData(), read(LS.demo, null) || seed(new Date()));
     write(LS.demo, data);
   }
   return data;
@@ -196,6 +201,36 @@ export async function lookupPrice(url) {
     if (/нельзя менять|Неизвестное действие/.test(m)) return { ok: false, error: 'Скрипт в таблице устарел: вставь новый Code.gs и создай новую версию развёртывания (инструкция в apps-script/README.md).' };
     return { ok: false, error: m };
   }
+}
+
+export async function addSmall(x) {
+  const item = Object.assign({ desc: '', image: '', who: settings.who, date: iso(new Date()) }, x);
+  data.smalls.push(item);
+  persist();
+  return remote({ action: 'append', sheet: 'Мелкие покупки', values: smallRow(item) });
+}
+
+export async function updateSmall(x, patch) {
+  Object.assign(x, patch);
+  persist();
+  if (!isSheetMode()) return '';
+  if (!x._row) return 'Строка списка ещё не получила номер, обнови страницу.';
+  return remote({ action: 'update', sheet: 'Мелкие покупки', row: x._row, col: 1, values: smallRow(x) });
+}
+
+export async function deleteSmall(x) {
+  const i = data.smalls.indexOf(x);
+  if (i < 0) return '';
+  const row = x._row;
+  if (isSheetMode()) {
+    if (!row) return 'Строка списка ещё не получила номер, обнови страницу.';
+    const err = await remote({ action: 'deleteRow', sheet: 'Мелкие покупки', row, checkCol: 1, checkValue: x.name });
+    if (err) return err;
+    data.smalls.forEach((y) => { if (y._row > row) y._row -= 1; });
+  }
+  data.smalls.splice(i, 1);
+  persist();
+  return '';
 }
 
 export async function deleteWish(w) {
@@ -311,6 +346,10 @@ export function seed(today) {
   op(iso(cur.start), 'Расход', 'IL', 'Продукты', 'Еда', 'Молоко 3% картон', 7.35, '₪');
   op(iso(cur.start), 'Расход', 'IL', 'Продукты', 'Алкоголь', 'Вино', 37.9, '₪');
 
+  d.smalls.push(
+    { name: 'Батарейки AA', desc: 'Для пульта, 4 штуки', image: '', who: 'Я', date: iso(today) },
+    { name: 'Лампочка в коридор', desc: 'Тёплый свет, цоколь E27', image: '', who: 'Муж', date: iso(today) }
+  );
   d.wishes.push(
     { owner: 'Я', name: 'Кофемашина', price: 2000, currency: '₪', link: '', desc: 'Для дома', when: '3–6 мес', saved: 1200, priority: 'Высокий', salePrice: 1700, saleStore: '[Магазин А]', image: '' },
     { owner: 'Я', name: 'Кроссовки', price: 400, currency: '₪', link: '', desc: 'Беговые', when: '1–3 мес', saved: 150, priority: 'Средний', salePrice: 0, saleStore: '', image: '' },

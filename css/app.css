@@ -77,3 +77,32 @@ button.q{width:44px;min-height:44px;border-radius:12px;background:var(--card);co
 .photo .pvimg{width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid var(--line,#ddd)}
 .photo .filebtn{display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:44px;border:1.5px solid var(--accent);color:var(--accent);border-radius:12px;font-weight:600;font-size:15px}
 .photo .pu{width:100%}
+
+.cards{display:flex;flex-direction:column;gap:12px}
+.nav .ic{font-size:18px;display:block;line-height:1}
+.nav .brand{display:none}
+@media (min-width:900px){
+  body{padding-left:248px;padding-bottom:48px;font-size:16px}
+  .hdr,#banners{max-width:1080px;padding-left:32px;padding-right:32px}
+  .hdr{padding-top:28px;padding-bottom:12px}
+  h1{font-size:30px}
+  #view{max-width:1080px;padding:8px 32px 24px;gap:16px}
+  /* вертикальное меню слева */
+  .nav{top:0;right:auto;bottom:0;width:248px;flex-direction:column;justify-content:flex-start;gap:6px;padding:28px 14px;background:var(--card);border-top:0;border-right:1px solid var(--line)}
+  .nav .brand{display:block;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 14px 14px;margin-bottom:6px;border-bottom:1px solid var(--line)}
+  .nav button{flex:none;display:flex;align-items:center;gap:12px;min-height:52px;padding:0 16px;border-radius:14px;font-size:16px;text-align:left;color:var(--ink);border:1px solid transparent;transition:background .15s}
+  .nav button .ic{font-size:20px;width:28px;text-align:center}
+  .nav button:hover{background:var(--chip)}
+  .nav button.on{background:var(--ok-bg);color:var(--accent);border-color:var(--accent);font-weight:700}
+  /* карточки в несколько колонок */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;align-items:start}
+  .cards>.m{grid-column:1/-1}
+  .c{padding:18px}
+  button.p:hover,button.o:hover,.mode:hover,.tw:hover{filter:brightness(.97)}
+  button.primary:hover,.fab:hover{filter:brightness(1.08)}
+  /* форма по центру, а не снизу */
+  .modal{align-items:center}
+  .sheet{max-width:560px;border-radius:20px;padding:24px}
+  .fab{right:32px;bottom:32px}
+  .toast{left:248px;right:0;bottom:32px;max-width:480px}
+}

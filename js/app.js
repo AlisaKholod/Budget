@@ -132,26 +132,39 @@ function shopWeeks() {
       ${table}</section>`;
   }).join('');
   const nav = `<div class="row"><button class="o sm" data-act="shopMonth" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${L.monthTitle(L.monthIndex(sm))}</b><button class="o sm" data-act="shopMonth" data-v="1" aria-label="Следующий месяц">›</button></div>`;
-  return `${nav}<div class="m">Факт берётся из трат «Продукты» по Израилю за неделю (недели с воскресенья по субботу).</div>${cards}`;
+  return `${nav}<div class="m">Факт берётся из трат «Продукты» по Израилю за неделю (недели с воскресенья по субботу).</div><div class="cards weeks">${cards}</div>`;
 }
 
 function shopDeals() {
   const list = S.data.tracked;
   return `<div class="m">Товары, которые ты часто берёшь. Цены обновляю по твоей просьбе в чате.</div>
-  ${list.length ? list.map((t) => {
+  ${list.length ? '<div class="cards">' + list.map((t) => {
     const low = t.last > 0 && t.threshold > 0 && t.last <= t.threshold;
     return `<section class="c"><div class="f">${img(t.image, t.name)}<div class="grow"><div class="row"><h2>${esc(t.name)}</h2>${t.onSale ? badge('Акция', 'ok') : badge('Без акции')}</div>
       <div class="m">${esc(t.store)}${t.branch ? ' · ' + esc(t.branch) : ''}</div>
       <div class="row"><span>${t.last ? 'Сейчас ' + L.fmt(t.last, '₪') : 'Цена ещё не проверена'}</span>${low ? badge('Ниже порога', 'ok') : ''}</div>
       <div class="m">Порог ${t.threshold ? L.fmt(t.threshold, '₪') : '—'}${t.checked ? ' · проверено ' + esc(t.checked) : ''}</div></div></div></section>`;
-  }).join('') : '<div class="m">Пока ничего не отслеживаем.</div>'}
+  }).join('') + '</div>' : '<div class="m">Пока ничего не отслеживаем.</div>'}
   <button class="o" data-act="addTracked">+ Отслеживать товар</button>`;
 }
 
 // ---------- Вишлист ----------
 
+function viewSmall(tabs) {
+  const cards = S.data.smalls.map((x, i) => `<section class="c"><div class="f">${img(x.image, x.name)}<div class="grow"><h2>${esc(x.name)}</h2>
+      ${x.desc ? `<div class="m">${esc(x.desc)}</div>` : ''}
+      <div class="m">${x.who ? esc(x.who) + ' · ' : ''}${esc(x.date)}</div></div></div>
+      <div class="f"><button class="o sm" data-act="smallEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="smallDel" data-v="${i}">Удалить</button></div></section>`).join('');
+  return `<div class="f">${tabs}</div>
+  <div class="m">Просто список того, что нужно купить: без цен и проверки скидок.</div>
+  <div class="f"><button class="primary grow" data-act="addSmall">+ Добавить в список</button></div>
+  <div class="cards">${cards || '<div class="m">Список пуст.</div>'}</div>`;
+}
+
 function viewWish() {
-  const tabs = OWNERS.map((o) => `<button class="p ${ui.owner === o ? 'on' : ''}" data-act="owner" data-v="${o}">${o}</button>`).join('');
+  const tabs = OWNERS.map((o) => `<button class="p ${ui.owner === o ? 'on' : ''}" data-act="owner" data-v="${o}">${o}</button>`).join('')
+    + `<button class="p ${ui.owner === 'small' ? 'on' : ''}" data-act="owner" data-v="small">🛒 Мелкие покупки${S.data.smalls.length ? ' · ' + S.data.smalls.length : ''}</button>`;
+  if (ui.owner === 'small') return viewSmall(tabs);
   const mine = S.data.wishes.map((w, i) => ({ w, i })).filter(({ w }) => w.owner === ui.owner);
   const done = mine.filter(({ w }) => w.bought);
   const views = `<div class="f"><button class="p ${ui.wishView === 'list' ? 'on' : ''}" data-act="wishView" data-v="list">Хотелки</button><button class="p ${ui.wishView === 'done' ? 'on' : ''}" data-act="wishView" data-v="done">🏆 Достижения${done.length ? ' · ' + done.length : ''}</button></div>`;
@@ -165,7 +178,7 @@ function viewWish() {
       <div class="f"><button class="o sm" data-act="wishUnbuy" data-v="${i}">Вернуть в хотелки</button><button class="o sm" data-act="wishEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`).join('');
     return `<div class="f">${tabs}</div>${views}
       ${done.length ? `<div class="m">Исполнено желаний: <b>${done.length}</b> на сумму <b>${sum}</b></div>` : ''}
-      ${cards || '<div class="m">Пока пусто. Нажми «Куплено» на карточке, когда купите.</div>'}`;
+      <div class="cards">${cards || '<div class="m">Пока пусто. Нажми «Куплено» на карточке, когда купите.</div>'}</div>`;
   }
   const list = mine.filter(({ w }) => !w.bought && (!ui.onlySale || (L.wishSite(w) && L.wishSite(w).gain > 0)));
   const cards = list.map(({ w, i }) => {
@@ -184,7 +197,7 @@ function viewWish() {
   }).join('');
   return `<div class="f">${tabs}</div>${views}
   <div class="f"><button class="primary grow" data-act="addWish">+ Добавить хотелку</button><button class="p ${ui.onlySale ? 'on' : ''}" data-act="onlySale">Только выгодные</button></div>
-  ${cards || '<div class="m">Здесь пока пусто.</div>'}`;
+  <div class="cards">${cards || '<div class="m">Здесь пока пусто.</div>'}</div>`;
 }
 
 // ---------- Путешествия ----------
@@ -450,6 +463,24 @@ function formTracked() {
   });
 }
 
+function formSmall(x) {
+  const edit = !!x;
+  const cur = x || {};
+  openForm({
+    title: edit ? `Изменить: ${cur.name}` : 'Что нужно купить',
+    submit: edit ? 'Сохранить изменения' : 'Добавить',
+    fields: [
+      { name: 'name', label: 'Название', required: true, value: cur.name || '' },
+      { name: 'desc', label: 'Описание', value: cur.desc || '', placeholder: 'размер, цвет, где искать' },
+      { name: 'image', label: 'Фото (необязательно)', type: 'photo', value: cur.image || '' },
+    ],
+    onSubmit: (v) => {
+      const data = { name: v.name.trim(), desc: v.desc.trim(), image: v.image.trim() };
+      return edit ? S.updateSmall(x, data) : S.addSmall(data);
+    },
+  });
+}
+
 const CUR_BY_CODE = { ILS: '₪', NIS: '₪', RUB: '₽' };
 
 // Спрашивает цену на сайте по ссылке и приводит ответ к виду для хотелки.
@@ -623,6 +654,17 @@ const ACTIONS = {
   owner: (v) => { ui.owner = v; render(); },
   onlySale: () => { ui.onlySale = !ui.onlySale; render(); },
   addWish: () => formWish(),
+  addSmall: () => formSmall(),
+  smallEdit: (v) => { const x = S.data.smalls[+v]; if (x) formSmall(x); },
+  smallDel: (v) => {
+    const x = S.data.smalls[+v];
+    if (!x) return;
+    openForm({
+      title: `Удалить «${x.name}»?`, fields: [], submit: 'Удалить',
+      hint: 'Запись будет удалена из списка и из таблицы.',
+      onSubmit: () => S.deleteSmall(x),
+    });
+  },
   wishEdit: (v) => { const w = S.data.wishes[+v]; if (w) formWish(w); },
   wishRefresh: async (v) => {
     const w = S.data.wishes[+v];
