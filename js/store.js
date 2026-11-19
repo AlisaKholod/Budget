@@ -192,7 +192,9 @@ export async function lookupPrice(url) {
   try {
     return await call({ action: 'price', url });
   } catch (e) {
-    return { ok: false, error: String(e.message || e) };
+    const m = String(e.message || e);
+    if (/нельзя менять|Неизвестное действие/.test(m)) return { ok: false, error: 'Скрипт в таблице устарел: вставь новый Code.gs и создай новую версию развёртывания (инструкция в apps-script/README.md).' };
+    return { ok: false, error: m };
   }
 }
 
