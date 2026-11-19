@@ -178,6 +178,14 @@ export async function setWishBought(w, date) {
   return remote({ action: 'update', sheet: 'Вишлист', row: w._row, col: 13, values: [w.bought] });
 }
 
+export async function updateWish(w, patch) {
+  Object.assign(w, patch);
+  persist();
+  if (!isSheetMode()) return '';
+  if (!w._row) return 'Строка вишлиста ещё не получила номер, обнови страницу.';
+  return remote({ action: 'update', sheet: 'Вишлист', row: w._row, col: 1, values: wishRow(w) });
+}
+
 export async function deleteWish(w) {
   const i = data.wishes.indexOf(w);
   if (i < 0) return '';

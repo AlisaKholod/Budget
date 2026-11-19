@@ -162,7 +162,7 @@ function viewWish() {
     const cards = done.map(({ w, i }) => `<section class="c"><div class="f">${img(w.image, w.name)}<div class="grow"><div class="row"><h2>${esc(w.name)}</h2>${badge('Куплено', 'ok')}</div>
       <div class="m">${esc(w.bought)} · ${L.fmt(L.wishGoal(w) || L.num(w.price), w.currency)}</div>
       ${w.desc ? `<div class="m">${esc(w.desc)}</div>` : ''}</div></div>
-      <div class="f"><button class="o sm" data-act="wishUnbuy" data-v="${i}">Вернуть в хотелки</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`).join('');
+      <div class="f"><button class="o sm" data-act="wishUnbuy" data-v="${i}">Вернуть в хотелки</button><button class="o sm" data-act="wishEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`).join('');
     return `<div class="f">${tabs}</div>${views}
       ${done.length ? `<div class="m">Исполнено желаний: <b>${done.length}</b> на сумму <b>${sum}</b></div>` : ''}
       ${cards || '<div class="m">Пока пусто. Нажми «Куплено» на карточке, когда купите.</div>'}`;
@@ -180,7 +180,7 @@ function viewWish() {
       ${w.when ? badge('Купить: ' + w.when) : ''}</div></div>
       ${bar(L.wishProgress(w))}
       <div class="row"><span class="m">Накоплено ${L.fmt(L.num(w.saved), w.currency)} из ${L.fmt(goal, w.currency)}</span><button class="o sm" data-act="wishPlus" data-v="${i}">+100 ${esc(w.currency)}</button></div>
-      <div class="f"><button class="primary sm" data-act="wishBuy" data-v="${i}">✓ Куплено</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`;
+      <div class="f"><button class="primary sm" data-act="wishBuy" data-v="${i}">✓ Куплено</button><button class="o sm" data-act="wishEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="wishDel" data-v="${i}">Удалить</button></div></section>`;
   }).join('');
   return `<div class="f">${tabs}</div>${views}
   <div class="f"><button class="primary grow" data-act="addWish">+ Добавить хотелку</button><button class="p ${ui.onlySale ? 'on' : ''}" data-act="onlySale">Только со скидкой</button></div>
@@ -266,7 +266,7 @@ function field(f) {
   if (f.type === 'select') input = `<select id="${id}" name="${f.name}" ${req}>${f.options.map((o) => `<option value="${esc(o)}" ${o === f.value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   else if (f.type === 'photo') {
     return `<div class="fld photo" data-photo="${f.name}">${esc(f.label)}
-      <input type="hidden" name="${f.name}" value="">
+      <input type="hidden" name="${f.name}" value="${esc(f.value || '')}">
       <div class="pv" hidden><img alt="" class="pvimg"><button type="button" class="o sm" data-photo-clear>Убрать</button></div>
       <label class="o filebtn">📷 Выбрать фото<input type="file" accept="image/*" hidden data-photo-file></label>
       <input type="url" class="pu" placeholder="или вставь ссылку на картинку" data-photo-url>
@@ -335,6 +335,7 @@ function wirePhotos(form) {
       pv.hidden = !v;
       if (v) pimg.src = v;
     };
+    set(hidden.value);
     box.querySelector('[data-photo-file]').addEventListener('change', async (e) => {
       const f = e.target.files[0];
       if (!f) return;
@@ -449,20 +450,28 @@ function formTracked() {
   });
 }
 
-function formWish() {
+function formWish(w) {
+  const edit = !!w;
+  const cur = w || {};
   openForm({
-    title: `Новая хотелка: ${ui.owner}`,
+    title: edit ? `Изменить: ${cur.name}` : `Новая хотелка: ${ui.owner}`,
+    submit: edit ? 'Сохранить изменения' : 'Сохранить',
     fields: [
-      { name: 'name', label: 'Название', required: true },
-      { name: 'price', label: 'Примерная цена', type: 'number' },
-      { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽'], value: '₪' },
-      { name: 'link', label: 'Ссылка на магазин' },
-      { name: 'image', label: 'Фото (необязательно)', type: 'photo' },
-      { name: 'desc', label: 'Описание' },
-      { name: 'when', label: 'Когда планируешь купить', type: 'select', options: WHEN, value: WHEN[0] },
-      { name: 'priority', label: 'Приоритет', type: 'select', options: ['Высокий', 'Средний', 'Низкий'], value: 'Средний' },
+      { name: 'name', label: 'Название', required: true, value: cur.name },
+      { name: 'price', label: 'Примерная цена', type: 'number', value: cur.price || '' },
+      { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽'], value: cur.currency || '₪' },
+      { name: 'salePrice', label: 'Цена со скидкой (если есть)', type: 'number', value: cur.salePrice || '' },
+      { name: 'saleStore', label: 'Где скидка', value: cur.saleStore || '' },
+      { name: 'link', label: 'Ссылка на магазин', value: cur.link || '' },
+      { name: 'image', label: 'Фото (необязательно)', type: 'photo', value: cur.image || '' },
+      { name: 'desc', label: 'Описание', value: cur.desc || '' },
+      { name: 'when', label: 'Когда планируешь купить', type: 'select', options: WHEN, value: cur.when || WHEN[0] },
+      { name: 'priority', label: 'Приоритет', type: 'select', options: ['Высокий', 'Средний', 'Низкий'], value: cur.priority || 'Средний' },
     ],
-    onSubmit: (v) => S.addWish({ owner: ui.owner, name: v.name.trim(), price: L.num(v.price), currency: v.currency, link: v.link.trim(), desc: v.desc.trim(), when: v.when, priority: v.priority, image: v.image.trim() }),
+    onSubmit: (v) => {
+      const data = { name: v.name.trim(), price: L.num(v.price), currency: v.currency, salePrice: L.num(v.salePrice), saleStore: (v.saleStore || '').trim(), link: v.link.trim(), desc: v.desc.trim(), when: v.when, priority: v.priority, image: v.image.trim() };
+      return edit ? S.updateWish(w, data) : S.addWish({ owner: ui.owner, ...data });
+    },
   });
 }
 
@@ -564,6 +573,7 @@ const ACTIONS = {
   owner: (v) => { ui.owner = v; render(); },
   onlySale: () => { ui.onlySale = !ui.onlySale; render(); },
   addWish: () => formWish(),
+  wishEdit: (v) => { const w = S.data.wishes[+v]; if (w) formWish(w); },
   wishView: (v) => { ui.wishView = v; render(); },
   wishBuy: async (v) => {
     const w = S.data.wishes[+v];
