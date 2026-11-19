@@ -6,8 +6,8 @@
  */
 
 // Листы, которые приложение может читать и менять.
-var SHEETS = ['Операции', 'Категории', 'Люди', 'Правила', 'План недели', 'Будущие расходы', 'Вишлист', 'Скидки', 'Поездки', 'Места', 'Мелкие покупки'];
-var WRITABLE = ['Операции', 'Вишлист', 'Будущие расходы', 'План недели', 'Скидки', 'Поездки', 'Места', 'Мелкие покупки'];
+var SHEETS = ['Операции', 'Категории', 'Люди', 'Правила', 'План недели', 'Будущие расходы', 'Вишлист', 'Скидки', 'Поездки', 'Места', 'Мелкие покупки', 'Жильё'];
+var WRITABLE = ['Операции', 'Вишлист', 'Будущие расходы', 'План недели', 'Скидки', 'Поездки', 'Места', 'Мелкие покупки', 'Жильё'];
 
 function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
@@ -51,7 +51,7 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     if (!authorized_(body.key)) return out_({ ok: false, error: 'Неверный ключ' });
     // Поиск цены не трогает таблицу, поэтому делаем его без блокировки.
-    if (body.action === 'price') return out_(lookupPrice_(body.url));
+    if (body.action === 'price') return out_(lookupPrice_(body.url, body.mode));
     lock.waitLock(20000);
     locked = true;
     if (WRITABLE.indexOf(body.sheet) < 0) return out_({ ok: false, error: 'Этот лист менять нельзя' });
@@ -196,7 +196,7 @@ function parseProduct_(html, pageUrl) {
   return res;
 }
 
-function lookupPrice_(url) {
+function lookupPrice_(url, mode) {
   url = String(url || '').trim();
   if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'Нужна ссылка, начинающаяся с http' };
   var resp;
@@ -216,8 +216,34 @@ function lookupPrice_(url) {
   if (code >= 400) return { ok: false, error: 'Магазин не пустил (код ' + code + ')' };
   var html = resp.getContentText().slice(0, 1500000);
   var p = parseProduct_(html, url);
-  if (!(p.price > 0)) return { ok: false, error: 'На странице не нашлась цена' };
+  if (!(p.price > 0) && mode === 'min') {
+    // Для билетов: если у страницы нет «товарной» разметки, ищем самую низкую цену в тексте.
+    var t = textMin_(html);
+    if (t) { p.price = t.price; p.currency = t.currency; p.approx = true; p.count = t.count; }
+  }
+  if (!(p.price > 0)) return { ok: false, error: 'На странице не нашлась цена (возможно, она подгружается скриптами)' };
   p.host = (url.match(/^https?:\/\/(?:www\.)?([^\/?#]+)/i) || [])[1] || '';
   p.ok = true;
   return p;
+}
+
+var CUR_SYMBOLS_ = { '₪': 'ILS', '$': 'USD', '€': 'EUR', '₽': 'RUB' };
+
+/** Самая низкая цена среди упоминаний вида «₪1,250» или «1 250 ₪» в тексте страницы; берём валюту, которой больше всего. */
+function textMin_(html) {
+  var text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
+  var found = {};
+  var num = '(\\d{1,3}(?:[ ,.\\u00a0]\\d{3})+(?:[.,]\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)';
+  var re = new RegExp('([₪$€₽])\\s?' + num + '|' + num + '\\s?([₪$€₽])', 'g');
+  var m;
+  while ((m = re.exec(text))) {
+    var sym = m[1] || m[4];
+    var val = parseMoney_((m[2] || m[3]).replace(/[\u00a0 ]/g, ''));
+    if (val < 30 || val > 1000000) continue;
+    (found[sym] = found[sym] || []).push(val);
+  }
+  var best = null;
+  Object.keys(found).forEach(function (s) { if (!best || found[s].length > found[best].length) best = s; });
+  if (!best) return null;
+  return { price: Math.min.apply(null, found[best]), currency: CUR_SYMBOLS_[best], count: found[best].length };
 }

@@ -18,7 +18,7 @@ export const status = { mode: 'demo', offline: false, error: '' };
 export let data = emptyData();
 
 export function emptyData() {
-  return { ops: [], cats: [], wishes: [], future: [], planWeeks: [], tracked: [], trips: [], places: [], smalls: [] };
+  return { ops: [], cats: [], wishes: [], future: [], planWeeks: [], tracked: [], trips: [], places: [], smalls: [], lodging: [] };
 }
 
 export function saveSettings(patch) {
@@ -59,9 +59,13 @@ export function fromSheets(all) {
     if (!r[0]) continue;
     d.tracked.push({ name: str(r[0]), store: str(r[1]), branch: str(r[2]), threshold: num(r[3]), last: num(r[4]), onSale: /^(да|true|1|истина)$/i.test(str(r[5])), checked: dateStr(r[6]), image: str(r[7]) });
   }
-  for (const { r } of rows(all['Поездки'])) {
+  for (const { r, row } of rows(all['Поездки'])) {
     if (!r[0]) continue;
-    d.trips.push({ id: str(r[0]), name: str(r[1]), best: str(r[2]), start: dateStr(r[3]), flights: num(r[4]), stay: num(r[5]), food: num(r[6]), transport: num(r[7]), fun: num(r[8]), currency: str(r[9]) || '₪', fareDrop: num(r[10]), image: str(r[11]) });
+    d.trips.push({ _row: row, id: str(r[0]), name: str(r[1]), best: str(r[2]), start: dateStr(r[3]), flights: num(r[4]), stay: num(r[5]), food: num(r[6]), transport: num(r[7]), fun: num(r[8]), currency: str(r[9]) || '₪', fareDrop: num(r[10]), image: str(r[11]), end: dateStr(r[12]), flightLink: str(r[13]), flightMin: num(r[14]), flightCur: str(r[15]), flightChecked: dateStr(r[16]) });
+  }
+  for (const { r, row } of rows(all['Жильё'])) {
+    if (!r[0]) continue;
+    d.lodging.push({ _row: row, tripId: str(r[0]), name: str(r[1]), from: dateStr(r[2]), to: dateStr(r[3]), price: num(r[4]), currency: str(r[5]) || '₪', link: str(r[6]), image: str(r[7]) });
   }
   for (const { r, row } of rows(all['Мелкие покупки'])) {
     if (!r[0]) continue;
@@ -80,7 +84,8 @@ const futureRow = (f) => [f.date, f.name, f.amount, f.currency, f.source, f.note
 const planRow = (p) => [p.weekStart, p.name, p.plan, p.currency, p.category || 'Продукты', p.sub || '', p.budget || ''];
 const trackedRow = (t) => [t.name, t.store, t.branch, t.threshold, t.last || '', t.onSale ? 'да' : '', t.checked || '', t.image || ''];
 const smallRow = (x) => [x.name, x.desc || '', x.image || '', x.who || '', x.date || ''];
-const tripRow = (t) => [t.id, t.name, t.best, t.start, t.flights, t.stay, t.food, t.transport, t.fun, t.currency, t.fareDrop || '', t.image || ''];
+const tripRow = (t) => [t.id, t.name, t.best, t.start, t.flights, t.stay, t.food, t.transport, t.fun, t.currency, t.fareDrop || '', t.image || '', t.end || '', t.flightLink || '', t.flightMin || '', t.flightCur || '', t.flightChecked || ''];
+const lodgingRow = (x) => [x.tripId, x.name, x.from || '', x.to || '', x.price || '', x.currency || '₪', x.link || '', x.image || ''];
 
 // ---------- Связь с Apps Script ----------
 
@@ -129,6 +134,17 @@ function persist() {
 }
 
 /** Выполнить запись в таблицу. Ошибку возвращаем строкой, а локальные данные уже обновлены. */
+/** После добавления строки перечитываем таблицу, чтобы у новой записи появился номер строки (для правки и удаления). */
+async function addRemote(body) {
+  const err = await remote(body);
+  if (err || !isSheetMode()) return err;
+  try {
+    data = fromSheets(await fetchAll());
+    persist();
+  } catch (e) { /* данные уже записаны; номер строки подтянется при следующей загрузке */ }
+  return '';
+}
+
 async function remote(body) {
   if (!isSheetMode()) return '';
   try {
@@ -164,7 +180,7 @@ export async function addWish(w) {
   const wish = Object.assign({ saved: 0, priority: 'Средний', salePrice: 0, saleStore: '', image: '' }, w);
   data.wishes.push(wish);
   persist();
-  return remote({ action: 'append', sheet: 'Вишлист', values: wishRow(wish) });
+  return addRemote({ action: 'append', sheet: 'Вишлист', values: wishRow(wish) });
 }
 
 export async function setWishSaved(w, saved) {
@@ -192,10 +208,10 @@ export async function updateWish(w, patch) {
 }
 
 // Узнаёт цену товара по ссылке через Apps Script. Возвращает { ok, price, currency, title, image, host, several } или { ok:false, error }.
-export async function lookupPrice(url) {
+export async function lookupPrice(url, mode) {
   if (!isSheetMode()) return { ok: false, error: 'Подключи таблицу в ⚙: цену по ссылке узнаёт скрипт, в демо-режиме это не работает.' };
   try {
-    return await call({ action: 'price', url });
+    return await call({ action: 'price', url, mode });
   } catch (e) {
     const m = String(e.message || e);
     if (/нельзя менять|Неизвестное действие/.test(m)) return { ok: false, error: 'Скрипт в таблице устарел: вставь новый Code.gs и создай новую версию развёртывания (инструкция в apps-script/README.md).' };
@@ -207,7 +223,7 @@ export async function addSmall(x) {
   const item = Object.assign({ desc: '', image: '', who: settings.who, date: iso(new Date()) }, x);
   data.smalls.push(item);
   persist();
-  return remote({ action: 'append', sheet: 'Мелкие покупки', values: smallRow(item) });
+  return addRemote({ action: 'append', sheet: 'Мелкие покупки', values: smallRow(item) });
 }
 
 export async function updateSmall(x, patch) {
@@ -269,7 +285,66 @@ export async function addTracked(t) {
 export async function addTrip(t) {
   data.trips.push(t);
   persist();
-  return remote({ action: 'append', sheet: 'Поездки', values: tripRow(t) });
+  return addRemote({ action: 'append', sheet: 'Поездки', values: tripRow(t) });
+}
+
+export async function updateTrip(t, patch) {
+  Object.assign(t, patch);
+  persist();
+  if (!isSheetMode()) return '';
+  if (!t._row) return 'Строка поездки ещё не получила номер, обнови страницу.';
+  return remote({ action: 'update', sheet: 'Поездки', row: t._row, col: 1, values: tripRow(t) });
+}
+
+/** Удалить поездку вместе с её местами и жильём. */
+export async function deleteTrip(t) {
+  const i = data.trips.indexOf(t);
+  if (i < 0) return '';
+  if (isSheetMode()) {
+    if (!t._row) return 'Строка поездки ещё не получила номер, обнови страницу.';
+    // сначала зависимые листы, чтобы не остались сироты, если удаление строки не удастся
+    let err = await remote({ action: 'replaceWhere', sheet: 'Места', keyCol: 1, keyValue: t.id, rows: [] });
+    if (err) return err;
+    err = await remote({ action: 'replaceWhere', sheet: 'Жильё', keyCol: 1, keyValue: t.id, rows: [] });
+    if (err) return err;
+    err = await remote({ action: 'deleteRow', sheet: 'Поездки', row: t._row, checkCol: 1, checkValue: t.id });
+    if (err) return err;
+    data.trips.forEach((x) => { if (x._row > t._row) x._row -= 1; });
+  }
+  data.trips.splice(i, 1);
+  data.places = data.places.filter((p) => p.tripId !== t.id);
+  data.lodging = data.lodging.filter((x) => x.tripId !== t.id);
+  persist();
+  return '';
+}
+
+export async function addLodging(x) {
+  data.lodging.push(x);
+  persist();
+  return addRemote({ action: 'append', sheet: 'Жильё', values: lodgingRow(x) });
+}
+
+export async function updateLodging(x, patch) {
+  Object.assign(x, patch);
+  persist();
+  if (!isSheetMode()) return '';
+  if (!x._row) return 'Строка жилья ещё не получила номер, обнови страницу.';
+  return remote({ action: 'update', sheet: 'Жильё', row: x._row, col: 1, values: lodgingRow(x) });
+}
+
+export async function deleteLodging(x) {
+  const i = data.lodging.indexOf(x);
+  if (i < 0) return '';
+  const row = x._row;
+  if (isSheetMode()) {
+    if (!row) return 'Строка жилья ещё не получила номер, обнови страницу.';
+    const err = await remote({ action: 'deleteRow', sheet: 'Жильё', row, checkCol: 2, checkValue: x.name });
+    if (err) return err;
+    data.lodging.forEach((y) => { if (y._row > row) y._row -= 1; });
+  }
+  data.lodging.splice(i, 1);
+  persist();
+  return '';
 }
 
 /** Полностью заменить места поездки. */
@@ -363,8 +438,12 @@ export function seed(today) {
   const y = today.getFullYear();
   const start = (off, day) => iso(new Date(y, today.getMonth() + off, day));
   d.trips.push(
-    { id: 'T1', name: '[Направление 1]', best: 'Апр – июн', start: start(6, 10), flights: 1400, stay: 1800, food: 700, transport: 300, fun: 500, currency: '₪', fareDrop: 18, image: '' },
-    { id: 'T2', name: '[Направление 2]', best: 'Сен – окт', start: start(10, 8), flights: 900, stay: 1200, food: 600, transport: 200, fun: 400, currency: '₪', fareDrop: 0, image: '' }
+    { id: 'T1', name: '[Направление 1]', best: 'Апр – июн', start: start(6, 10), flights: 1400, stay: 1800, food: 700, transport: 300, fun: 500, currency: '₪', fareDrop: 18, image: '', end: start(6, 19), flightLink: '', flightMin: 1250, flightCur: '₪', flightChecked: iso(today) },
+    { id: 'T2', name: '[Направление 2]', best: 'Сен – окт', start: start(10, 8), flights: 900, stay: 1200, food: 600, transport: 200, fun: 400, currency: '₪', fareDrop: 0, image: '', end: start(10, 15), flightLink: '', flightMin: 0, flightCur: '', flightChecked: '' }
+  );
+  d.lodging.push(
+    { tripId: 'T1', name: '[Отель в центре]', from: start(6, 10), to: start(6, 14), price: 900, currency: '₪', link: '', image: '' },
+    { tripId: 'T1', name: '[Апартаменты у моря]', from: start(6, 14), to: start(6, 19), price: 1100, currency: '₪', link: '', image: '' }
   );
   d.places.push(
     { tripId: 'T1', n: 1, name: '[Место 1]', nights: 3 }, { tripId: 'T1', n: 2, name: '[Место 2]', nights: 4 }, { tripId: 'T1', n: 3, name: '[Место 3]', nights: 2 },

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fmt, signed, totals, byCategory, weeksOfMonth, monthIndex, parseDate, futureItems, futureGroups,
-  futureTiles, reserve, planFact, wishGoal, wishProgress, wishDiscountPct, wishSite, tripDates, nightsWord,
+  futureTiles, reserve, planFact, wishGoal, wishProgress, wishDiscountPct, wishSite, tripDates, nightsWord, tripSpan, daysWord, lodgingTotals,
   parseRoute, monthlySeries, iso,
 } from '../js/logic.js';
 
@@ -130,4 +130,20 @@ test('parseDate', () => {
   assert.equal(iso(parseDate('2026-11-17')), '2026-11-17');
   assert.equal(parseDate(''), null);
   assert.equal(parseDate('мусор'), null);
+});
+
+test('tripSpan и жильё', () => {
+  assert.deepEqual(tripSpan('2027-05-10', '2027-05-19'), { nights: 9, days: 10 });
+  assert.deepEqual(tripSpan('2027-02-27', '2027-03-02'), { nights: 3, days: 4 });
+  assert.equal(tripSpan('2027-05-10', '2027-05-09'), null);
+  assert.equal(tripSpan('', '2027-05-09'), null);
+  assert.equal(daysWord(1), '1 день');
+  assert.equal(daysWord(3), '3 дня');
+  assert.equal(daysWord(11), '11 дней');
+  const t = lodgingTotals([
+    { from: '2027-05-10', to: '2027-05-14', price: 900, currency: '₪' },
+    { from: '2027-05-14', to: '2027-05-19', price: 1100.5, currency: '₪' },
+    { price: 50, currency: '$' },
+  ]);
+  assert.deepEqual(t, { byCur: { '₪': 2000.5, '$': 50 }, nights: 9 });
 });

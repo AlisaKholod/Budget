@@ -106,3 +106,5 @@ button.q{width:44px;min-height:44px;border-radius:12px;background:var(--card);co
   .fab{right:32px;bottom:32px}
   .toast{left:248px;right:0;bottom:32px;max-width:480px}
 }
+
+.c.in{background:var(--bg);padding:12px}

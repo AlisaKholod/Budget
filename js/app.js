@@ -202,6 +202,19 @@ function viewWish() {
 
 // ---------- Путешествия ----------
 
+const ruDate = (s) => { const d = L.parseDate(s); return d ? L.ddmm(d) + '.' + d.getFullYear() : ''; };
+
+// «10.05.2027 – 19.05.2027 · 10 дней / 9 ночей»
+function tripWhen(t) {
+  const sp = L.tripSpan(t.start, t.end);
+  const range = t.start ? ruDate(t.start) + (t.end ? ' – ' + ruDate(t.end) : '') : '';
+  return [range, sp ? `${L.daysWord(sp.days)} / ${L.nightsWord(sp.nights)}` : ''].filter(Boolean).join(' · ');
+}
+
+function tripLodging(id) {
+  return S.data.lodging.map((x, i) => ({ x, i })).filter(({ x }) => x.tripId === id).sort((p, q) => String(p.x.from).localeCompare(String(q.x.from)));
+}
+
 function tripPlaces(id) {
   return S.data.places.filter((p) => p.tripId === id).sort((a, b) => a.n - b.n);
 }
@@ -222,7 +235,7 @@ function tripList() {
   return `
   ${fares.length ? `<section class="c hl"><div class="row"><h2>Скидки на авиабилеты</h2>${badge(fares.length + ' направл.', 'ok')}</div><div class="m">${fares.map((t) => esc(t.name) + ' −' + t.fareDrop + '%').join(', ')}</div></section>` : ''}
   <section class="c"><h2>Ближайшие 12 месяцев</h2><div class="mg">${months}</div><div class="m">Цифра в месяце означает номер поездки.</div></section>
-  ${trips.map((t) => `<button class="tw" data-act="trip" data-v="${esc(t.id)}">${img(t.image, t.name, 'tp')}<div class="tb"><b>${esc(t.name)}</b><span class="m">Лучшие месяцы</span><b>${esc(t.best || '—')}</b><span class="m">Бюджет ≈ ${L.fmt(L.tripBudget(t), t.currency)}</span>${t.fareDrop > 0 ? badge('Билеты −' + t.fareDrop + '%', 'ok') : ''}</div></button>`).join('') || '<div class="m">Поездок пока нет.</div>'}
+  ${trips.map((t) => `<button class="tw" data-act="trip" data-v="${esc(t.id)}">${img(t.image, t.name, 'tp')}<div class="tb"><b>${esc(t.name)}</b><span class="m">${esc(tripWhen(t) || 'Даты не заданы')}</span><span class="m">Лучшие месяцы</span><b>${esc(t.best || '—')}</b><span class="m">Бюджет ≈ ${L.fmt(L.tripBudget(t), t.currency)}</span>${t.fareDrop > 0 ? badge('Билеты −' + t.fareDrop + '%', 'ok') : ''}</div></button>`).join('') || '<div class="m">Поездок пока нет.</div>'}
   <button class="o" data-act="addTrip">+ Новая поездка</button>`;
 }
 
@@ -241,15 +254,49 @@ function tripDetail(t) {
   return `
   <button class="o" data-act="tripBack">← Все поездки</button>
   ${img(t.image, t.name, 'tp hero')}
-  <div><h1>${esc(t.name)}</h1><div class="m">${t.start ? 'Старт ' + esc(t.start) + ' · ' : ''}лучшие месяцы: ${esc(t.best || '—')}</div></div>
+  <div><h1>${esc(t.name)}</h1><div class="m">${esc(tripWhen(t) || 'Даты не заданы')}</div><div class="m">Лучшие месяцы: ${esc(t.best || '—')}</div></div>
+  <div class="f"><button class="o sm" data-act="tripEdit">Изменить поездку</button><button class="o sm" data-act="tripDel">Удалить</button></div>
   ${t.fareDrop > 0 ? `<section class="c hl"><b>Билеты дешевле обычного на ${t.fareDrop}%</b></section>` : ''}
+  ${flightCard(t)}
   <section class="c"><div class="row"><h2>Детализация цен</h2><b>≈ ${L.fmt(L.tripBudget(t), t.currency)}</b></div>${costs.map(([n, v]) => `<div class="row"><span>${n}</span><span>${L.fmt(L.num(v), t.currency)}</span></div>`).join('')}</section>
   <section class="c"><div class="row"><h2>Маршрут и даты</h2><span class="m">${places.length ? 'Всего ' + L.nightsWord(td.nights) : ''}</span></div>
     ${places.length ? routeMap(td.rows) : '<div class="m">Мест пока нет.</div>'}
     ${places.length ? `<a class="gm" href="${esc(L.gmapsDirUrl(names))}" target="_blank" rel="noopener noreferrer">Открыть в Google Maps ↗</a>` : ''}
-    ${td.rows.map((p, k) => `<div class="row"><span><b>${k + 1}. ${esc(p.name)}</b><span class="m sub">${L.ddmm(p.from)} – ${L.ddmm(p.to)} · ${L.nightsWord(p.nights)}</span><a class="lnk" href="${esc(L.gmapsPlaceUrl(p.name))}" target="_blank" rel="noopener noreferrer">На карте ↗</a></span><span class="f"><button class="q" data-act="nights" data-v="${k}" data-d="-1" aria-label="Меньше ночей">−</button><button class="q" data-act="nights" data-v="${k}" data-d="1" aria-label="Больше ночей">+</button></span></div>`).join('')}
+    ${(() => { const sp = L.tripSpan(t.start, t.end); return sp && places.length && sp.nights !== td.nights ? `<div class="m">В маршруте ${L.nightsWord(td.nights)}, а в поездке ${L.nightsWord(sp.nights)}.</div>` : ''; })()}
+    ${td.rows.map((p, k) => `<div class="row"><span><b>${k + 1}. ${esc(p.name)}</b><span class="m sub">${L.ddmm(p.from)} – ${L.ddmm(p.to)} · ${L.nightsWord(p.nights)}</span><a class="lnk" href="${esc(L.gmapsPlaceUrl(p.name))}" target="_blank" rel="noopener noreferrer">На карте ↗</a></span><span class="f"><button class="q" data-act="nights" data-v="${k}" data-d="-1" aria-label="Меньше ночей">−</button><button class="q" data-act="nights" data-v="${k}" data-d="1" aria-label="Больше ночей">+</button><button class="q" data-act="placeEdit" data-v="${k}" aria-label="Изменить место">✎</button><button class="q" data-act="placeDel" data-v="${k}" aria-label="Удалить место">×</button></span></div>`).join('')}
     <div class="f"><button class="o grow" data-act="addPlace">+ Место</button><button class="o grow" data-act="importRoute">Загрузить из Google Maps</button></div>
-  </section>`;
+  </section>
+  ${lodgingCard(t)}`;
+}
+
+function flightCard(t) {
+  const link = safeUrl(t.flightLink);
+  const cur = t.flightCur || t.currency;
+  const diff = t.flightMin > 0 && t.flights > 0 && cur === t.currency ? L.round2(t.flights - t.flightMin) : null;
+  return `<section class="c"><div class="row"><h2>Авиабилеты</h2>${t.flightMin > 0 ? badge('от ' + L.fmt(t.flightMin, cur), 'ok') : ''}</div>
+    ${t.flightMin > 0 ? `<div class="m">Минимальная цена по ссылке${t.flightChecked ? ', проверено ' + esc(ruDate(t.flightChecked)) : ''}</div>` : `<div class="m">${link ? 'Цена ещё не проверялась.' : 'Добавь ссылку на билеты (кнопка «Изменить поездку»), и я подтяну минимальную цену.'}</div>`}
+    ${diff != null ? (diff >= 0 ? badge('Дешевле бюджета на ' + L.fmt(diff, t.currency), 'ok') : badge('Дороже бюджета на ' + L.fmt(-diff, t.currency), 'bad')) : ''}
+    <div class="f">${link ? `<a class="gm grow" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Открыть билеты ↗</a><button class="o" data-act="flightRefresh">↻ Цена</button>` : ''}</div></section>`;
+}
+
+function lodgingCard(t) {
+  const list = tripLodging(t.id);
+  const tot = L.lodgingTotals(list.map(({ x }) => x));
+  const sum = Object.entries(tot.byCur).map(([c, v]) => L.fmt(v, c)).join(' + ');
+  const sp = L.tripSpan(t.start, t.end);
+  const gap = sp && list.length && tot.nights !== sp.nights ? `<div class="m">Жильём закрыто ${L.nightsWord(tot.nights)} из ${sp.nights}.</div>` : '';
+  const items = list.map(({ x, i }) => {
+    const s = L.tripSpan(x.from, x.to);
+    const link = safeUrl(x.link);
+    return `<div class="c in"><div class="f">${img(x.image, x.name)}<div class="grow"><b>${esc(x.name)}</b>
+      <div class="m">${x.from ? esc(ruDate(x.from)) : '—'} – ${x.to ? esc(ruDate(x.to)) : '—'}${s ? ' · ' + L.nightsWord(s.nights) : ''}</div>
+      <div>${x.price ? L.fmt(x.price, x.currency) : 'Цена не указана'}</div>
+      ${link ? `<a class="lnk" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Ссылка ↗</a>` : ''}</div></div>
+      <div class="f"><button class="o sm" data-act="lodgingEdit" data-v="${i}">Изменить</button><button class="o sm" data-act="lodgingDel" data-v="${i}">Удалить</button></div></div>`;
+  }).join('');
+  return `<section class="c"><div class="row"><h2>Жильё</h2>${list.length ? `<b>${sum}</b>` : ''}</div>${gap}
+    ${items || '<div class="m">Вариантов жилья пока нет.</div>'}
+    <button class="o" data-act="addLodging">+ Жильё</button></section>`;
 }
 
 // ---------- Отрисовка ----------
@@ -556,34 +603,105 @@ function formWish(w) {
   });
 }
 
-function formTrip() {
+const FLIGHT_CUR = { ILS: '₪', NIS: '₪', RUB: '₽', USD: '$', EUR: '€' };
+
+// Минимальная цена билета по ссылке. Возвращает { ok, price, cur, msg }.
+async function flightPrice(link) {
+  const r = await S.lookupPrice(link, 'min');
+  if (!r.ok) return { ok: false, msg: r.error || 'Не получилось узнать цену.' };
+  const cur = FLIGHT_CUR[String(r.currency || '').toUpperCase()] || r.currency || '';
+  const note = r.approx ? ' (взята самая низкая цена из текста страницы, проверь по ссылке)' : r.several ? ' (на странице несколько вариантов, взята самая низкая)' : '';
+  return { ok: true, price: r.price, cur, msg: `Минимальная цена: ${L.fmt(r.price, cur)}${note}` };
+}
+
+function formTrip(t) {
+  const edit = !!t;
+  const cur = t || {};
+  let found = null;
   openForm({
-    title: 'Новая поездка',
+    title: edit ? `Изменить: ${cur.name}` : 'Новая поездка',
+    submit: edit ? 'Сохранить изменения' : 'Сохранить',
     fields: [
-      { name: 'name', label: 'Направление', required: true },
-      { name: 'best', label: 'Лучшие месяцы', placeholder: 'например, апр – июн' },
-      { name: 'start', label: 'Дата начала', type: 'date' },
-      { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽'], value: '₪' },
-      { name: 'flights', label: 'Авиабилеты', type: 'number' },
-      { name: 'stay', label: 'Жильё', type: 'number' },
-      { name: 'food', label: 'Питание', type: 'number' },
-      { name: 'transport', label: 'Транспорт', type: 'number' },
-      { name: 'fun', label: 'Развлечения', type: 'number' },
-      { name: 'image', label: 'Фото (необязательно)', type: 'photo' },
+      { name: 'name', label: 'Направление', required: true, value: cur.name || '' },
+      { name: 'best', label: 'Лучшие месяцы', placeholder: 'например, апр – июн', value: cur.best || '' },
+      { name: 'start', label: 'Дата начала', type: 'date', value: cur.start || '' },
+      { name: 'end', label: 'Дата завершения', type: 'date', value: cur.end || '' },
+      { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽'], value: cur.currency || '₪' },
+      { name: 'flights', label: 'Авиабилеты (бюджет)', type: 'number', value: cur.flights || '' },
+      { name: 'flightLink', label: 'Ссылка на авиабилеты', type: 'url', value: cur.flightLink || '', placeholder: 'https://...' },
+      { name: 'stay', label: 'Жильё (бюджет)', type: 'number', value: cur.stay || '' },
+      { name: 'food', label: 'Питание', type: 'number', value: cur.food || '' },
+      { name: 'transport', label: 'Транспорт', type: 'number', value: cur.transport || '' },
+      { name: 'fun', label: 'Развлечения', type: 'number', value: cur.fun || '' },
+      { name: 'image', label: 'Фото (необязательно)', type: 'photo', value: cur.image || '' },
     ],
-    onSubmit: (v) => S.addTrip({ id: 'T' + Date.now().toString(36), name: v.name.trim(), best: v.best, start: v.start, currency: v.currency, flights: L.num(v.flights), stay: L.num(v.stay), food: L.num(v.food), transport: L.num(v.transport), fun: L.num(v.fun), fareDrop: 0, image: v.image.trim() }),
+    onOpen(form) {
+      const box = document.createElement('div');
+      box.className = 'fld';
+      box.innerHTML = '<button type="button" class="o">🔎 Узнать минимальную цену по ссылке</button><div class="m" data-price-msg></div>';
+      form.flightLink.closest('label').after(box);
+      const msg = box.querySelector('[data-price-msg]');
+      let busy = false;
+      box.querySelector('button').addEventListener('click', async () => {
+        const link = form.flightLink.value.trim();
+        if (!link) { msg.textContent = 'Сначала вставь ссылку.'; return; }
+        if (busy) return;
+        busy = true;
+        msg.textContent = 'Смотрю цену…';
+        const r = await flightPrice(link);
+        busy = false;
+        msg.textContent = r.msg;
+        found = r.ok ? r : null;
+        if (r.ok && !form.flights.value && (r.cur === form.currency.value)) form.flights.value = r.price;
+      });
+    },
+    onSubmit: (v) => {
+      const sp = v.start && v.end ? L.tripSpan(v.start, v.end) : true;
+      if (!sp) return 'Дата завершения раньше даты начала.';
+      const data = { name: v.name.trim(), best: v.best, start: v.start, end: v.end, currency: v.currency, flights: L.num(v.flights), flightLink: v.flightLink.trim(), stay: L.num(v.stay), food: L.num(v.food), transport: L.num(v.transport), fun: L.num(v.fun), image: v.image.trim() };
+      if (found) Object.assign(data, { flightMin: found.price, flightCur: found.cur, flightChecked: isoToday() });
+      if (edit) return S.updateTrip(t, data);
+      return S.addTrip({ id: 'T' + Date.now().toString(36), fareDrop: 0, flightMin: 0, flightCur: '', flightChecked: '', ...data });
+    },
   });
 }
 
-function formPlace() {
+function formPlace(k) {
+  const edit = Number.isInteger(k);
+  const places = tripPlaces(ui.trip).map((p) => ({ name: p.name, nights: p.nights }));
+  const cur = edit ? places[k] : {};
   openForm({
-    title: 'Новое место',
+    title: edit ? 'Изменить место' : 'Новое место',
     hint: 'Лучше с городом, например «Колизей, Рим», тогда ссылка в Google Maps найдёт точное место.',
-    fields: [{ name: 'name', label: 'Название', required: true }, { name: 'nights', label: 'Ночей', type: 'number', value: 2, required: true }],
+    fields: [{ name: 'name', label: 'Название', required: true, value: cur.name || '' }, { name: 'nights', label: 'Ночей', type: 'number', value: cur.nights || 2, required: true }],
     onSubmit: (v) => {
-      const places = tripPlaces(ui.trip).map((p) => ({ name: p.name, nights: p.nights }));
-      places.push({ name: v.name.trim(), nights: Math.max(1, Math.round(L.num(v.nights))) });
+      const p = { name: v.name.trim(), nights: Math.max(1, Math.round(L.num(v.nights))) };
+      if (edit) places[k] = p; else places.push(p);
       return S.setPlaces(ui.trip, places);
+    },
+  });
+}
+
+function formLodging(x) {
+  const edit = !!x;
+  const cur = x || {};
+  const trip = S.data.trips.find((t) => t.id === ui.trip) || {};
+  openForm({
+    title: edit ? `Изменить: ${cur.name}` : 'Новое жильё',
+    submit: edit ? 'Сохранить изменения' : 'Сохранить',
+    fields: [
+      { name: 'name', label: 'Название', required: true, value: cur.name || '' },
+      { name: 'from', label: 'Заезд', type: 'date', value: cur.from || trip.start || '' },
+      { name: 'to', label: 'Выезд', type: 'date', value: cur.to || trip.end || '' },
+      { name: 'price', label: 'Цена за всё проживание', type: 'number', value: cur.price || '' },
+      { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽', '$', '€'], value: cur.currency || trip.currency || '₪' },
+      { name: 'link', label: 'Ссылка', type: 'url', value: cur.link || '', placeholder: 'https://...' },
+      { name: 'image', label: 'Картинка', type: 'photo', value: cur.image || '' },
+    ],
+    onSubmit: (v) => {
+      if (v.from && v.to && !L.tripSpan(v.from, v.to)) return 'Выезд раньше заезда.';
+      const data = { name: v.name.trim(), from: v.from, to: v.to, price: L.num(v.price), currency: v.currency, link: v.link.trim(), image: v.image.trim() };
+      return edit ? S.updateLodging(x, data) : S.addLodging({ tripId: ui.trip, ...data });
     },
   });
 }
@@ -708,6 +826,44 @@ const ACTIONS = {
     render();
   },
   trip: (v) => { ui.trip = v; window.scrollTo(0, 0); render(); },
+  tripEdit: () => { const t = S.data.trips.find((x) => x.id === ui.trip); if (t) formTrip(t); },
+  tripDel: () => {
+    const t = S.data.trips.find((x) => x.id === ui.trip);
+    if (!t) return;
+    openForm({
+      title: `Удалить поездку «${t.name}»?`, fields: [], submit: 'Удалить',
+      hint: 'Вместе с поездкой удалятся её места и варианты жилья. Это нельзя отменить.',
+      onSubmit: async () => { const err = await S.deleteTrip(t); if (!err) ui.trip = null; return err; },
+    });
+  },
+  flightRefresh: async () => {
+    const t = S.data.trips.find((x) => x.id === ui.trip);
+    if (!t || !t.flightLink) return;
+    toast('Смотрю цену…');
+    const r = await flightPrice(t.flightLink);
+    if (!r.ok) { toast(r.msg); return; }
+    const sameCur = !t.flightCur || t.flightCur === r.cur;
+    const drop = sameCur && t.flightMin > 0 && r.price < t.flightMin ? Math.round((1 - r.price / t.flightMin) * 100) : 0;
+    const patch = { flightMin: r.price, flightCur: r.cur, flightChecked: isoToday(), fareDrop: drop };
+    if (!t.flights && r.cur === t.currency) patch.flights = r.price;
+    const err = await S.updateTrip(t, patch);
+    toast(err || r.msg + (drop ? ` Дешевле, чем в прошлый раз, на ${drop}%.` : ''));
+    render();
+  },
+  addLodging: () => formLodging(),
+  lodgingEdit: (v) => { const x = S.data.lodging[+v]; if (x) formLodging(x); },
+  lodgingDel: (v) => {
+    const x = S.data.lodging[+v];
+    if (!x) return;
+    openForm({ title: `Удалить «${x.name}»?`, fields: [], submit: 'Удалить', hint: 'Вариант жилья будет удалён.', onSubmit: () => S.deleteLodging(x) });
+  },
+  placeEdit: (v) => formPlace(+v),
+  placeDel: (v) => {
+    const places = tripPlaces(ui.trip).map((p) => ({ name: p.name, nights: p.nights }));
+    const p = places[+v];
+    if (!p) return;
+    openForm({ title: `Удалить место «${p.name}»?`, fields: [], submit: 'Удалить', onSubmit: () => { places.splice(+v, 1); return S.setPlaces(ui.trip, places); } });
+  },
   tripBack: () => { ui.trip = null; render(); },
   addTrip: () => formTrip(),
   addPlace: () => formPlace(),

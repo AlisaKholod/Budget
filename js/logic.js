@@ -226,6 +226,32 @@ export function tripDates(start, places) {
   return { rows, nights: off, end: new Date(s.getFullYear(), s.getMonth(), s.getDate() + off) };
 }
 
+/** Длительность поездки по датам начала и конца: ночи и дни (день заезда и день отъезда считаются). */
+export function tripSpan(start, end) {
+  const a = parseDate(start);
+  const b = parseDate(end);
+  if (!a || !b || b < a) return null;
+  const nights = Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000);
+  return { nights, days: nights + 1 };
+}
+
+export function daysWord(n) {
+  const m = n % 10, h = n % 100;
+  return n + ' ' + (m === 1 && h !== 11 ? 'день' : m >= 2 && m <= 4 && (h < 10 || h >= 20) ? 'дня' : 'дней');
+}
+
+/** Жильё по поездке: сумма по валютам и число ночей, которые оно закрывает. */
+export function lodgingTotals(list) {
+  const byCur = {};
+  let nights = 0;
+  list.forEach((x) => {
+    byCur[x.currency] = round2((byCur[x.currency] || 0) + num(x.price));
+    const s = tripSpan(x.from, x.to);
+    if (s) nights += s.nights;
+  });
+  return { byCur, nights };
+}
+
 export function ddmm(d) {
   return p2(d.getDate()) + '.' + p2(d.getMonth() + 1);
 }

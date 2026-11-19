@@ -6,7 +6,7 @@ import vm from 'node:vm';
 // Code.gs — обычный JS без модулей: загружаем его в песочницу вместе с заглушками сервисов Google.
 const ctx = vm.createContext({ ContentService: {}, PropertiesService: {}, SpreadsheetApp: {}, LockService: {}, Utilities: {}, Logger: {}, UrlFetchApp: {} });
 vm.runInContext(fs.readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8'), ctx);
-const { parseProduct_, parseMoney_ } = ctx;
+const { parseProduct_, parseMoney_, textMin_ } = ctx;
 const ld = (o) => `<html><head><script type="application/ld+json">${JSON.stringify(o)}</script></head></html>`;
 
 test('parseMoney_: форматы чисел', () => {
@@ -53,4 +53,13 @@ test('запасной вариант: meta-теги', () => {
 
 test('цены нет', () => {
   assert.equal(parseProduct_('<html><title>X</title></html>', '').price, 0);
+});
+
+test('textMin_: минимальная цена в тексте, валюта с наибольшим числом упоминаний', () => {
+  const html = '<html><script>var a="₪1";</script><body><div>от ₪1,250</div><div>1 890 ₪</div><div>₪ 2,100</div><div>$ 400</div></body></html>';
+  const r = textMin_(html);
+  assert.equal(r.price, 1250);
+  assert.equal(r.currency, 'ILS');
+  assert.equal(r.count, 3);
+  assert.equal(textMin_('<p>нет цен</p>'), null);
 });
