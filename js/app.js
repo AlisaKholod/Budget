@@ -3,7 +3,7 @@ import * as S from './store.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '');
+const safeUrl = (u) => (/^https?:\/\//i.test(u || '') || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u || '') ? u : '');
 
 const today = new Date();
 const nowIdx = L.monthIndex(today);
@@ -264,6 +264,14 @@ function field(f) {
   const req = f.required ? 'required' : '';
   let input;
   if (f.type === 'select') input = `<select id="${id}" name="${f.name}" ${req}>${f.options.map((o) => `<option value="${esc(o)}" ${o === f.value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  else if (f.type === 'photo') {
+    return `<div class="fld photo" data-photo="${f.name}">${esc(f.label)}
+      <input type="hidden" name="${f.name}" value="">
+      <div class="pv" hidden><img alt="" class="pvimg"><button type="button" class="o sm" data-photo-clear>Убрать</button></div>
+      <label class="o filebtn">📷 Выбрать фото<input type="file" accept="image/*" hidden data-photo-file></label>
+      <input type="url" class="pu" placeholder="или вставь ссылку на картинку" data-photo-url>
+      <div class="m" data-photo-msg></div></div>`;
+  }
   else if (f.type === 'textarea') input = `<textarea id="${id}" name="${f.name}" rows="4" placeholder="${esc(f.placeholder || '')}" ${req}></textarea>`;
   else input = `<input id="${id}" name="${f.name}" type="${f.type || 'text'}" ${f.type === 'number' ? 'inputmode="decimal" step="any"' : ''} value="${esc(f.value ?? '')}" placeholder="${esc(f.placeholder || '')}" ${req}>`;
   return `<label class="fld" for="${id}">${esc(f.label)}${input}</label>`;
@@ -283,9 +291,59 @@ function openForm({ title, fields, submit = 'Сохранить', hint = '', onS
     if (err) toast(err);
     render();
   });
+  wirePhotos(form);
   if (onOpen) onOpen(form);
   const first = form.querySelector('input,select,textarea');
   if (first) first.focus();
+}
+
+// Уменьшаем фото до небольшой миниатюры, чтобы оно влезло в ячейку таблицы (лимит 50 000 знаков).
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => {
+      URL.revokeObjectURL(url);
+      for (const [side, q] of [[360, 0.75], [300, 0.7], [240, 0.65], [180, 0.6]]) {
+        const k = Math.min(1, side / Math.max(im.width, im.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(im.width * k));
+        c.height = Math.max(1, Math.round(im.height * k));
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(im, 0, 0, c.width, c.height);
+        const d = c.toDataURL('image/jpeg', q);
+        if (d.length < 40000) return resolve(d);
+      }
+      reject(new Error('Фото слишком сложное, выбери другое.'));
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Не удалось открыть это фото.')); };
+    im.src = url;
+  });
+}
+
+function wirePhotos(form) {
+  form.querySelectorAll('[data-photo]').forEach((box) => {
+    const hidden = box.querySelector('input[type=hidden]');
+    const pv = box.querySelector('.pv');
+    const pimg = box.querySelector('.pvimg');
+    const msg = box.querySelector('[data-photo-msg]');
+    const urlIn = box.querySelector('[data-photo-url]');
+    const set = (v) => {
+      hidden.value = v;
+      pv.hidden = !v;
+      if (v) pimg.src = v;
+    };
+    box.querySelector('[data-photo-file]').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      msg.textContent = 'Обрабатываю…';
+      try { set(await shrinkImage(f)); urlIn.value = ''; msg.textContent = ''; } catch (err) { msg.textContent = err.message; }
+    });
+    urlIn.addEventListener('input', () => set(safeUrl(urlIn.value.trim())));
+    box.querySelector('[data-photo-clear]').addEventListener('click', () => { set(''); urlIn.value = ''; });
+  });
 }
 
 function closeModal() {
@@ -385,9 +443,9 @@ function formTracked() {
       { name: 'store', label: 'Магазин', value: 'Кешет Таамим' },
       { name: 'branch', label: 'Филиал', value: 'Кирьят-Хаим' },
       { name: 'threshold', label: 'Порог цены, ₪', type: 'number' },
-      { name: 'image', label: 'Ссылка на картинку (необязательно)' },
+      { name: 'image', label: 'Фото (необязательно)', type: 'photo' },
     ],
-    onSubmit: (v) => S.addTracked({ name: v.name.trim(), store: v.store, branch: v.branch, threshold: L.num(v.threshold), last: 0, onSale: false, checked: '', image: v.image || '' }),
+    onSubmit: (v) => S.addTracked({ name: v.name.trim(), store: v.store, branch: v.branch, threshold: L.num(v.threshold), last: 0, onSale: false, checked: '', image: (v.image || '').trim() }),
   });
 }
 
@@ -399,7 +457,7 @@ function formWish() {
       { name: 'price', label: 'Примерная цена', type: 'number' },
       { name: 'currency', label: 'Валюта', type: 'select', options: ['₪', '₽'], value: '₪' },
       { name: 'link', label: 'Ссылка на магазин' },
-      { name: 'image', label: 'Ссылка на картинку (необязательно)' },
+      { name: 'image', label: 'Фото (необязательно)', type: 'photo' },
       { name: 'desc', label: 'Описание' },
       { name: 'when', label: 'Когда планируешь купить', type: 'select', options: WHEN, value: WHEN[0] },
       { name: 'priority', label: 'Приоритет', type: 'select', options: ['Высокий', 'Средний', 'Низкий'], value: 'Средний' },
@@ -421,7 +479,7 @@ function formTrip() {
       { name: 'food', label: 'Питание', type: 'number' },
       { name: 'transport', label: 'Транспорт', type: 'number' },
       { name: 'fun', label: 'Развлечения', type: 'number' },
-      { name: 'image', label: 'Ссылка на фото (необязательно)' },
+      { name: 'image', label: 'Фото (необязательно)', type: 'photo' },
     ],
     onSubmit: (v) => S.addTrip({ id: 'T' + Date.now().toString(36), name: v.name.trim(), best: v.best, start: v.start, currency: v.currency, flights: L.num(v.flights), stay: L.num(v.stay), food: L.num(v.food), transport: L.num(v.transport), fun: L.num(v.fun), fareDrop: 0, image: v.image.trim() }),
   });

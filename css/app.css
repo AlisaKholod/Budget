@@ -71,3 +71,9 @@ button.q{width:44px;min-height:44px;border-radius:12px;background:var(--card);co
 .fld input,.fld select,.fld textarea{min-height:44px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;font:16px system-ui,sans-serif;background:var(--card);color:var(--ink);width:100%}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(132px + env(safe-area-inset-bottom));max-width:448px;margin:0 auto;background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:12px;font-size:14px;z-index:20}
 [hidden]{display:none!important}
+
+.photo{display:flex;flex-direction:column;gap:8px}
+.photo .pv{display:flex;align-items:center;gap:12px}
+.photo .pvimg{width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid var(--line,#ddd)}
+.photo .filebtn{display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:44px;border:1.5px solid var(--accent);color:var(--accent);border-radius:12px;font-weight:600;font-size:15px}
+.photo .pu{width:100%}
