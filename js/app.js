@@ -977,8 +977,18 @@ function setupFromLink() {
   ui.openWeek = cw ? cw.n : null;
   render();
   setupFromLink();
-  await S.init();
-  $('#loading').hidden = true;
-  render();
+  if (S.initFast()) {
+    // данные с прошлого раза показываем сразу, свежие подгружаются в фоне
+    $('#loading').hidden = true;
+    render();
+    $('#sync').hidden = false;
+    await S.refresh();
+    render();
+    $('#sync').hidden = true;
+  } else {
+    await S.init();
+    $('#loading').hidden = true;
+    render();
+  }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 })();

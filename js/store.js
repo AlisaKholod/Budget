@@ -122,6 +122,37 @@ async function loadAll() {
 }
 
 /** Первая загрузка. В режиме таблицы при ошибке берём последние сохранённые данные. */
+/** Быстрый старт: если на устройстве уже есть сохранённые данные таблицы, показываем их сразу, а свежие подтягиваем в фоне. */
+export function initFast() {
+  if (!isSheetMode()) return false;
+  const cache = read(LS.cache, null);
+  if (!cache || !Array.isArray(cache.ops)) return false;
+  status.mode = 'sheet';
+  data = Object.assign(emptyData(), cache);
+  return true;
+}
+
+/** Фоновое обновление из таблицы. Возвращает true, если данные заменены. Если за это время пользователь что-то менял, результат не применяем, чтобы не затереть правку. */
+export async function refresh() {
+  if (!isSheetMode()) return false;
+  const before = mutations;
+  status.checked = false;
+  try {
+    const fresh = await loadAll();
+    status.checked = true;
+    status.offline = false;
+    status.error = '';
+    if (mutations !== before) return false;
+    data = fresh;
+    write(LS.cache, data);
+    return true;
+  } catch (e) {
+    status.offline = true;
+    status.error = String(e.message || e);
+    return false;
+  }
+}
+
 export async function init() {
   if (isSheetMode()) {
     status.mode = 'sheet';
@@ -145,7 +176,10 @@ export async function init() {
   return data;
 }
 
+let mutations = 0;
+
 function persist() {
+  mutations += 1;
   write(isSheetMode() ? LS.cache : LS.demo, data);
 }
 
